@@ -12,7 +12,7 @@ import os
 import argparse
 import sys
 import time
-#import humanfriendly
+import humanfriendly
 #%%
 def cropresize(image_directory="image_directory",
                CT="CT",
@@ -201,8 +201,7 @@ def main():
     elapsed = time.time() - start_time
 
     print("I'm finished! Finally, I'm a beautiful butterfly!")
-    print(('Finished resizing images in {:.3f} seconds.').format(elapsed))
-#    print(('Finished resizing images in {}.').format(humanfriendly.format_timespan(elapsed)))
+    print(('Finished resizing images in {}.').format(humanfriendly.format_timespan(elapsed)))
 
 if __name__ == '__main__':
     main()
