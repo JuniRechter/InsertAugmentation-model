@@ -473,7 +473,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
 
                         self.__save_domvec(df, 
                                            Dom_filename=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Domain_TruePred"), ".png", execution, split),
-                                           DoY_filename_in=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_DoY_TruePred_LegendIn"), ".png", execution, split))
+                                           DoY_filename=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_DoY_TruePred_LegendIn"), ".png", execution, split))
  
                      # Append training and validation scores to the histories
                     histories.append(obj_value)
