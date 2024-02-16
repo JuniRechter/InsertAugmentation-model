@@ -2,7 +2,7 @@
 """
 Created on Mon Sep 25 11:22:36 2023
 
-@author: hayle
+@author: Juniper Rechter
 """
 import copy
 import warnings
@@ -13,6 +13,7 @@ import tensorflow as tf
 
 import numpy as np
 import pandas as pd
+from sklearn.utils import class_weight
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import StratifiedGroupKFold
@@ -122,14 +123,18 @@ def generate_df(path, class_true, class_pred, classes, DANN=False, dom_true=None
 
             df['true_DoY']=((np.arctan2(df.true_sine, df.true_cosine))*365)/(2*np.pi)
             df['true_DoY'] = [(365 + ele) if ele <0 else ele for ele in df['true_DoY']]
+            df['true_DoY'] = [(15 + ele) if ele <=350 else (ele + 15 - 365) for ele in df['true_DoY']]
 
             df['true_angle']=((np.arctan2(df.true_sine, df.true_cosine))*180)/(np.pi)
             df['true_angle'] = [(180 + ele) if ele <0 else ele for ele in df['true_angle']]
 
             pred_dom=dom_pred.tolist()
             df[['pred_sine', 'pred_cosine']] = pd.DataFrame(pred_dom)
+            df['pred_sine'] =df['pred_sine']/0.8
+            df['pred_cosine'] =df['pred_cosine']/0.8
             df['pred_DoY']=((np.arctan2(df.pred_sine, df.pred_cosine))*365)/(2*np.pi)
             df['pred_DoY'] = [(365 + ele) if ele <0 else ele for ele in df['pred_DoY']]
+            df['pred_DoY'] = [(15 + ele) if ele <=350 else (ele + 15 - 365) for ele in df['pred_DoY']]
 
             df['pred_angle']=((np.arctan2(df.pred_sine, df.pred_cosine))*180)/(np.pi)
             df['pred_angle'] = [(180 + ele) if ele <0 else ele for ele in df['pred_angle']]
@@ -145,42 +150,7 @@ def generate_df(path, class_true, class_pred, classes, DANN=False, dom_true=None
                                        ordered=False)  
 
     return df
-#%%
-#Generate_df
-def generate_domdf(path, dom_true, dom_pred):
-    
-    df=pd.DataFrame()
-    image_path=path.tolist()
-    df['image_path']=image_path
-    
-    true_dom=dom_true.tolist()
-    df[['true_sine', 'true_cosine']] = pd.DataFrame(true_dom)
 
-    df['true_DoY']=((np.arctan2(df.true_sine, df.true_cosine))*365)/(2*np.pi)
-    df['true_DoY'] = [(365 + ele) if ele <0 else ele for ele in df['true_DoY']]
-
-    df['true_angle']=((np.arctan2(df.true_sine, df.true_cosine))*180)/(np.pi)
-    df['true_angle'] = [(180 + ele) if ele <0 else ele for ele in df['true_angle']]
-
-    pred_dom=dom_pred.tolist()
-    df[['pred_sine', 'pred_cosine']] = pd.DataFrame(pred_dom)
-    df['pred_DoY']=((np.arctan2(df.pred_sine, df.pred_cosine))*365)/(2*np.pi)
-    df['pred_DoY'] = [(365 + ele) if ele <0 else ele for ele in df['pred_DoY']]
-
-    df['pred_angle']=((np.arctan2(df.pred_sine, df.pred_cosine))*180)/(np.pi)
-    df['pred_angle'] = [(180 + ele) if ele <0 else ele for ele in df['pred_angle']]
-
-    df["true_season"] = pd.cut(df['true_DoY'],
-                               bins=[1, 60, 152, 244, 335, 366],
-                               labels=["Winter", "Spring", "Summer", "Fall", "Winter"],
-                               ordered=False)
-
-    df["pred_season"] = pd.cut(df['pred_DoY'],
-                                   bins=[1, 60, 152, 244, 335, 366],
-                                   labels=["Winter", "Spring", "Summer", "Fall", "Winter"],
-                                   ordered=False)  
-
-    return df
 #%%
 def generate_domain_truepred(df):
     """
@@ -216,19 +186,6 @@ def generate_domain_truepred(df):
     axis.xaxis.set_minor_locator(AutoMinorLocator(2))
     axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-    #plt.annotate(text="January", xy=[0.0172, 1.05])
-    #plt.annotate(text="February",xy=[0.5221, 0.9529])
-    #plt.annotate(text="March",xy=[0.95, 0.5647])
-    #plt.annotate(text="April", xy=[1.08, 0.0085])
-    #plt.annotate(text="May",xy=[0.93, -0.53])
-    #plt.annotate(text="June",xy=[0.5074, -0.9617])
-    #plt.annotate(text="July",xy=[0.0172, -1.05])
-    #plt.annotate(text="August",xy=[-0.4925, -0.9702])
-    #plt.annotate(text="September",xy=[-1.01, -0.53])
-    #plt.annotate(text="October",xy=[-1.125, -0.0085])
-    #plt.annotate(text="November",xy=[-0.995, 0.5647])
-    #plt.annotate(text="December",xy=[-0.5804, 0.9529])
-
     plt.annotate(text="Fall",xy=[-1.0, -0.52], fontsize=15)
     plt.annotate(text="Winter",xy=[-0.57, 0.92], fontsize=15)
     plt.annotate(text="Spring",xy=[0.91, 0.48], fontsize=15)
@@ -239,7 +196,7 @@ def generate_domain_truepred(df):
     axis.legend(fontsize=15)
     return figure
 #%%
-def generate_doy_truepred(df, legend="out"):
+def generate_doy_truepred(df): #, legend="out"):
     figure = plt.figure(figsize=(12,12))
     axis = figure.add_subplot(111)
     cdict = {"Fall": '#E30513', "Winter": '#78D2EB', "Spring": '#62D658', "Summer": '#D68802'} #COLOURBLIND SAFE PALETTE
@@ -251,12 +208,6 @@ def generate_doy_truepred(df, legend="out"):
 
     axis.grid(which="minor", color='grey', linestyle='dotted', alpha=0.3)
     axis.grid(which="major", color='grey', linestyle='dotted', alpha=0.5)
-#    axis.scatter(data=df, x='true_DoY', y='pred_DoY', c=df['true_season'].map(cdict),
- #                marker="D", s=100, alpha=0.65)
-    
-    #sns.lmplot(data=PTSC, x='true_DoY',y='pred_DoY',
-    #          hue='true_season',palette=cdict, 
-    #         scatter_kws={"alpha":0.5, "s": 20, "marker":"D"}, fit_reg=False)
     
     axis.tick_params(which='major', length=9, labelsize=12)
     axis.tick_params(which='minor', length=7)
@@ -280,10 +231,10 @@ def generate_doy_truepred(df, legend="out"):
                       marker='D', markersize=10, alpha=0.65, linestyle='')
 
     handles=[winter, spring, summer, fall]
-    if legend=="out":
-        axis.legend(handles=handles, bbox_to_anchor=(1.2, 0.593), title="True Season", title_fontsize=15, fontsize=15)
-    else:
-        axis.legend(handles=handles, title="True Season", title_fontsize=15, fontsize=15) #bbox_to_anchor=(1.2, 1.01), 
+#    if legend=="out":
+ #       axis.legend(handles=handles, bbox_to_anchor=(1.2, 0.593), title="True Season", title_fontsize=15, fontsize=15)
+  #  else:
+    axis.legend(handles=handles, title="True Season", title_fontsize=15, fontsize=15) #bbox_to_anchor=(1.2, 1.01), 
     return figure
 #%%
 def Nested_SKF_Tuner(superclass: Tuner,):
@@ -292,18 +243,22 @@ def Nested_SKF_Tuner(superclass: Tuner,):
         Hyparameters search evaluated using Stratified Cross-Validation over a
         parameter space.
         """
-
+        
         def __init__(self,
                      hypermodel,
                      kfoldcv: StratifiedKFold,
                      group: None,
                      df,
-#                     y_train,
+                     dataset,
+                     model_name,
                      class_names,
+                     domain_names:None,
+                     group_name,
                      *args,
                      save_history=False,
                      save_output=False,
                      save_cm=True,
+                     save_domvec=False,
                      restore_best=True,
                      batch_size,
                      **kwargs,):
@@ -315,12 +270,14 @@ def Nested_SKF_Tuner(superclass: Tuner,):
             super(SKF_CV, self).__init__(hypermodel, *args, **kwargs)
             self._kfoldcv = kfoldcv
             self._group = group
- #           self._y_train = y_train
-#            self._x_test=x_test
- #           self._y_test=y_test
+            self._dataset = dataset
+            self._model = model_name
+            self._domain_names = domain_names
+            self._group_name = group_name
             self._save_history = save_history
             self._save_output = save_output
             self._save_cm = save_cm
+            self._save_domvec = save_domvec
             self._restore_best = restore_best
             self._batch_size = batch_size
             self._verbose = 2
@@ -362,13 +319,26 @@ def Nested_SKF_Tuner(superclass: Tuner,):
         def run_trial(self, trial, df, class_names, *args, **kwargs):
             original_callbacks = kwargs.pop("callbacks", [])
             classes = class_names
-            df['id'] = df['id']-1
+            if self._dataset == "AHC":
+                df['id'] = df['id']-1
             Y = np.array(df['id'])
+            num_classes = (df['id'].nunique())
+            if self._model in ("DANNseNet201"):
+                df['adjsin_date2'] = df['adjsin_date']*0.8
+                df['adjcos_date2'] = df['adjcos_date']*0.8
+            
+#    class_weights = dict(zip(np.unique(y_train),
+ #                            class_weight.compute_class_weight(class_weight = 'balanced',
+  #                                                             classes= np.unique(y_train),
+   #                                                            y= y_train)))
 
-            # Run the training process multiple times.
             histories = []
             tot_predicted_y = np.array([])
             tot_true_y = np.array([])
+            tot_predicted_dom = np.array([])
+            tot_true_dom = np.array([])
+
+            # Run the training process multiple times.            
             for execution in range(self.executions_per_trial):
                 # Run the training over different splits.
                 for split, (train_index, val_index) in enumerate(self._kfoldcv.split(df, Y, self._group)):
@@ -378,25 +348,27 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     
                     train_df = df.iloc[train_index]
                     val_df = df.iloc[val_index]
-                    
-                    
-                    traingen = idg.ValidationDataGenerator(train_df,
+                                        
+                    traingen = idg.TrainingDataGenerator(train_df,
                                                            batch_size = self._batch_size,
                                                            y_col = {'id': 'id', 'domain': 'domain', 
-                                                                    'sin_date': 'sin_date', 'cos_date': 'cos_date'},
+                                                                    'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
                                                            X_col = {'path': 'path'},
+                                                           model_name=self._model,
                                                            shuffle = True)
                     valgen = idg.ValidationDataGenerator(val_df,
                                                          batch_size = self._batch_size,
                                                          y_col = {'id': 'id', 'domain': 'domain', 
-                                                                  'sin_date': 'sin_date', 'cos_date': 'cos_date'},
+                                                                  'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
                                                          X_col = {'path': 'path'},
+                                                         model_name=self._model,
                                                          shuffle = True)
                     testgen = idg.ValidationDataGenerator(val_df,
                                                           batch_size=1,
                                                           y_col = {'id': 'id', 'domain': 'domain',
-                                                                   'sin_date': 'sin_date', 'cos_date': 'cos_date'},
+                                                                   'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
                                                           X_col = {'path': 'path'},
+                                                          model_name=self._model,
                                                           shuffle = False)
                     predicted_y = np.array([])
                     true_y = np.array([])
@@ -405,15 +377,23 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     copied_kwargs = copy.copy(kwargs)
 
                     # Set the training set
-                    
                     copied_kwargs["x"] = traingen
                     # Get the validation set
                     val_paths = np.array(val_df["path"])
                     y_val = np.array(val_df['id'])
-                    y_val = tf.keras.utils.to_categorical(y_val, num_classes=12)
+                    y_val = tf.keras.utils.to_categorical(y_val, num_classes=num_classes)
+                    
+                    if self._model in ("DANNseNet201"):
+                        sin_date = np.array(val_df['adjsin_date'])
+                        cos_date = np.array(val_df['adjcos_date'])
+                        sincos_val = np.asarray([y for y in zip(sin_date, cos_date)])
+                    elif self._model in ('CatDANN', 'catDANN'):
+                        cat_domain = np.array(val_df['domain'])
+                        true_dom = tf.keras.utils.to_categorical(cat_domain, num_classes=4)
+                        
                     # Set the validation set
                     copied_kwargs["validation_data"] = valgen
-                        
+
                     # -------------------------------------------------------
                     # Callbacks
                     # -------------------------------------------------------
@@ -446,17 +426,6 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     trainhist.to_csv(self.__get_filename_path(trial_path, "history", ".csv", execution, split))
 
 
-                    # Save the history if requested
-#                    if self._save_history:
- #                       self.__save_history(history,
-  #                          self.__get_filename_path(trial_path, "history", ".json", execution, split),)
-                    # Save the output in numpy format if requested
-#                    if self._save_output:
- #                       self.__save_output(model, x_train,
-  #                          self.__get_filename_path(trial_path, "training", ".npy", execution, split),)
-   #                     self.__save_output(model, x_val,
-    #                        self.__get_filename_path(trial_path, "validation", ".npy", execution, split),)
-
                     # Evaluate train performance on best epoch
                     obj_value = model.evaluate(traingen,
                                                return_dict=True,
@@ -469,42 +438,55 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     
                     obj_value.update({"val_" + str(key): val for key, val in val_res.items()})
 
-#                    test_res = model.evaluate(Xt,
- #                                             yt_labels,
-  #                                            batch_size=self._batch_size,
-   #                                           return_dict=True,
-    #                                          verbose=self._display.verbose,)
-                    
-       #             obj_value.update({"test_" + str(key): val for key, val in test_res.items()})
-
                     # Create and save CONFUSION MATRIX if requested
-                    y_pred = model.predict(testgen, verbose=0)
+                    if self._model in ('DenseNet201', 'CNN'):
+                        y_pred = model.predict(testgen, verbose=0)
+                    elif self._model in ('DANNseNet201', 'DANN'):
+                        y_pred, dom_pred = model.predict(testgen, verbose=0)
+                    elif self._model in ('catDANN', 'CatDANN'):
+                        y_pred, predicted_dom = model.predict(testgen, verbose=0)
+                    
                     predicted_y = np.append(predicted_y, np.argmax(y_pred, axis=1))
                     true_y = np.append(true_y, np.argmax(y_val, axis=1))
                     if self._save_cm:
                         tot_predicted_y = np.append(tot_predicted_y, np.argmax(y_pred, axis=1))
                         tot_true_y = np.append(tot_true_y, np.argmax(y_val, axis=1)) 
                         results_df = generate_df(val_paths, true_y, predicted_y, classes, DANN=False)
-                        results_df.to_csv(self.__get_filename_path(trial_path, "DenseNet201_Class_Val_predictions", ".csv", execution, split))
-
+                        results_df.to_csv(self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Val_predictions"), ".csv", execution, split))
 
                         self.__save_cm(true_y, predicted_y, class_names=classes, 
 #                            filenameL=self.__get_filename_path(trial_path, "Confusion_Matrix", "light.png", execution, split),
-                            filenameD=self.__get_filename_path(trial_path, "Confusion_Matrix", "dark.png", execution, split))
+                            filenameD=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Confusion_Matrix"), "dark.png", execution, split))
+                    
+                        if self._model in ('catDANN', 'CatDANN'):
+                            tot_predicted_dom = np.append(tot_predicted_dom, dom_pred)
+                            tot_true_dom = np.append(tot_true_dom, true_dom)
+                            self.__save_cm(true_dom, predicted_dom, class_names=self._domain_names, 
+                                filenameD=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Season_Confusion_Matrix"), "dark.png", execution, split))
+                    
+                    # Create and save DOMAIN PREDICTION VECTOR if requested
+                    if self._save_domvec:
+                        tot_predicted_dom = np.append(tot_predicted_dom, dom_pred)
+                        tot_true_dom = np.append(tot_true_dom, sincos_val)
+                        df = generate_df(val_paths, true_y, predicted_y, classes, DANN=True, dom_true=sincos_val, dom_pred=dom_pred)
+                        df.to_csv(self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Val_predictions"), ".csv", execution, split))
 
+                        self.__save_domvec(df, 
+                                           Dom_filename=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Domain_TruePred"), ".png", execution, split),
+                                           DoY_filename_in=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_DoY_TruePred_LegendIn"), ".png", execution, split))
+ 
                      # Append training and validation scores to the histories
                     histories.append(obj_value)
 
             if self._save_cm:
                 self.__save_cm(tot_true_y, tot_predicted_y, class_names=classes, 
- #                   filenameL=self.__get_filename_path(trial_path, "Averaged Confusion_Matrix", "light.png", "final", "split"),
-                    filenameD=self.__get_filename_path(trial_path, "Averaged Confusion_Matrix", "dark.png", "final", "split"))
+                    filenameD=self.__get_filename_path(trial_path, "Averaged Confusion_Matrix", ".png", "final", "split"))
 
             # It will returns an array of dictionary, note by default keras-tuner
             # will compute an average. This average is therefore the average of the
             # scores across the folds.
             histdf = pd.DataFrame(histories)
-            histdf.to_csv(self.__get_filename_path(trial_path, "DenseNet201_trial_scores", ".csv", execution, split))
+            histdf.to_csv(self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_trial_scores"), ".csv", execution, split))
             return histories
 
         def __get_filename_path(self, trial_path, name, ext, execution, split):
@@ -551,14 +533,19 @@ def Nested_SKF_Tuner(superclass: Tuner,):
             with open(filename, "w",) as fp:
                 json.dump(history.history, fp)
         
-        def __save_cm(self, y_true, y_pred, class_names, filenameD): #L, filenameD):
+        def __save_cm(self, y_true, y_pred, class_names, filenameD):
             cm = sklearn.metrics.confusion_matrix(y_true, y_pred)
-#            figureL = generate_confusion_matrix(cm, class_names, colour="light")
             figureD = generate_confusion_matrix(cm, class_names, colour="dark")
-#            figureL.savefig(filenameL, dpi=300, bbox_inches='tight')
             figureD.savefig(filenameD, dpi=300, bbox_inches='tight')
-
-    
+           
+        def __save_domvec(self, df, Dom_filename, DoY_filename):
+            Dom_figure = generate_domain_truepred(df)
+            Dom_figure.savefig(Dom_filename, dpi=300)
+            plt.close(Dom_figure)
+            DoY_figure = generate_doy_truepred(df)
+            DoY_figure.savefig(DoY_filename, dpi=300)
+            plt.close(DoY_figure)
+            
         def load_model(self, trial):
             """
             Returns all models associated with a specific trial. The output is an array where
@@ -807,6 +794,7 @@ def Nested_DANNSKF_Tuner(superclass: Tuner,):
                             filenameL=self.__get_filename_path(trial_path, "Confusion_Matrix", "light.png", execution, split),
                             filenameD=self.__get_filename_path(trial_path, "Confusion_Matrix", "dark.png", execution, split))
 
+
                     # Create and save DOMAIN PREDICTION VECTOR if requested
                     if self._save_domvec:
                         tot_predicted_dom = np.append(tot_predicted_dom, dom_pred)
@@ -896,14 +884,11 @@ def Nested_DANNSKF_Tuner(superclass: Tuner,):
             figureD.savefig(filenameD, dpi=300, bbox_inches='tight')
             plt.close(figureD)
             
-        def __save_domvec(self, df, Dom_filename, DoY_filename_out, DoY_filename_in):
+        def __save_domvec(self, df, Dom_filename, DoY_filename_in):
             Dom_figure = generate_domain_truepred(df)
             Dom_figure.savefig(Dom_filename, dpi=300)
             plt.close(Dom_figure)
-            DoY_figure = generate_doy_truepred(df, "out")
-            DoY_figure.savefig(DoY_filename_out, dpi=300)
-            plt.close(DoY_figure)
-            DoY_figure = generate_doy_truepred(df, "in")
+            DoY_figure = generate_doy_truepred(df)
             DoY_figure.savefig(DoY_filename_in, dpi=300)
             plt.close(DoY_figure)
 
