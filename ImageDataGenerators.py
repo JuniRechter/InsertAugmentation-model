@@ -64,7 +64,7 @@ train_aug = iaa.SomeOf((1, 3), [  # Random number between 0, 3
 
 class TrainingDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, df, X_col, y_col,
-                 batch_size,
+                 batch_size, model_name,
                  shuffle=True):
         
         self.df = df.copy()
@@ -72,11 +72,10 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
         self.y_col = y_col
         self.batch_size = batch_size
         self.shuffle = shuffle
-        
+        self.model = model_name
         self.n = len(self.df)
         self.n_id = ((df[y_col['id']]).nunique())
         self.n_domain = df[y_col['domain']].nunique()
-    
     # Shuffling upon epoch end if flagged
     def on_epoch_end(self):
         if self.shuffle:
@@ -84,9 +83,9 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
     
     #Reads image and normalizes it
     def __get_input(self, path):
-        image = tf.keras.utils.load_img("MNRF/" + path)
+        image = tf.keras.utils.load_img(path)
         image_arr = tf.keras.utils.img_to_array(image)
-#        image_arr = small_aug.augment_image(image_arr.astype("uint8")).astype("float32")
+        image_arr = small_aug.augment_image(image_arr.astype("uint8")).astype("float32")
         return image_arr/255.
     
     #One-hot encoding of label
@@ -96,23 +95,23 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
     #Generates batch_size samples of data
     def __get_data(self, batches):
         # Generates data containing batch_size samples
-
         path_batch = batches[self.X_col['path']]
         name_batch = batches[self.y_col['id']]
-        
-        sin_season_batch = batches[self.y_col['sin_date']]
-        cos_season_batch = batches[self.y_col['cos_date']]
-#        domain_batch = batches[self.y_col['domain']]
-
         X_batch = np.asarray([self.__get_input(x) for x in path_batch])
         y0_batch = np.asarray([self.__get_output(y, self.n_id) for y in name_batch])
-        y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
-#        y1_batch = np.asarray([self.__get_input(y) for y in domain_batch])
 
-        #return X_batch, y0_batch
-        return X_batch, y0_batch   
-#        return X_batch, tuple([y0_batch, y1_batch])
-    
+        if self.model in ('DenseNet201', 'CNN'):
+            return X_batch, y0_batch
+        elif self.model in ('DANNseNet201', 'DANN'):
+            sin_season_batch = batches[self.y_col['sin_date']]
+            cos_season_batch = batches[self.y_col['cos_date']]
+            y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
+            return X_batch, tuple([y0_batch, y1_batch])
+        elif self.model in ('CatDANN', 'catDANN'):
+            domain_batch = batches[self.y_col['domain']]
+            y1_batch = np.asarray([self.__get_input(y) for y in domain_batch])
+            return X_batch, tuple([y0_batch, y1_batch])
+
     #Returns data batches as tuple
     def __getitem__(self, index):
         
@@ -128,7 +127,7 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
 
 class ValidationDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, df, X_col, y_col,
-                 batch_size,
+                 batch_size, model_name,
                  shuffle=True):
         
         self.df = df.copy()
@@ -136,11 +135,10 @@ class ValidationDataGenerator(tf.keras.utils.Sequence):
         self.y_col = y_col
         self.batch_size = batch_size
         self.shuffle = shuffle
-        
+        self.model = model_name
         self.n = len(self.df)
         self.n_id = ((df[y_col['id']]).nunique())
         self.n_domain = df[y_col['domain']].nunique()
-    
     # Shuffling upon epoch end if flagged
     def on_epoch_end(self):
         if self.shuffle:
@@ -149,7 +147,7 @@ class ValidationDataGenerator(tf.keras.utils.Sequence):
     #Reads image and normalizes it
     def __get_input(self, path):
 
-        image = tf.keras.utils.load_img("AHC/" + path)
+        image = tf.keras.utils.load_img(path)
         image_arr = tf.keras.utils.img_to_array(image)
         return image_arr/255.
    
@@ -160,22 +158,22 @@ class ValidationDataGenerator(tf.keras.utils.Sequence):
     #Generates batches of data
     def __get_data(self, batches):
         # Generates data containing batch_size samples
-
         path_batch = batches[self.X_col['path']]
         name_batch = batches[self.y_col['id']]
-        
-        sin_season_batch = batches[self.y_col['sin_date']]
-        cos_season_batch = batches[self.y_col['cos_date']]
-#        domain_batch = batches[self.y_col['domain']]
-
         X_batch = np.asarray([self.__get_input(x) for x in path_batch])
         y0_batch = np.asarray([self.__get_output(y, self.n_id) for y in name_batch])
-        y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
-#        y1_batch = np.asarray([self.__get_input(y) for y in domain_batch])
 
-        #return X_batch, y0_batch
-        return X_batch, y0_batch   
-#        return X_batch, tuple([y0_batch, y1_batch])
+        if self.model in ('DenseNet201', 'CNN'):
+            return X_batch, y0_batch
+        elif self.model in ('DANNseNet201', 'DANN'):
+            sin_season_batch = batches[self.y_col['sin_date']]
+            cos_season_batch = batches[self.y_col['cos_date']]
+            y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
+            return X_batch, tuple([y0_batch, y1_batch])
+        elif self.model in ('CatDANN'):
+            domain_batch = batches[self.y_col['domain']]
+            y1_batch = np.asarray([self.__get_input(y) for y in domain_batch])
+            return X_batch, tuple([y0_batch, y1_batch])
     
     #Returns data batches as tuple
     def __getitem__(self, index):
@@ -194,7 +192,7 @@ class ValidationDataGenerator(tf.keras.utils.Sequence):
 
 class TestingDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, df, X_col, y_col,
-                 batch_size,
+                 batch_size, model_name,
                  shuffle=True):
         
         self.df = df.copy()
@@ -202,19 +200,18 @@ class TestingDataGenerator(tf.keras.utils.Sequence):
         self.y_col = y_col
         self.batch_size = batch_size
         self.shuffle = shuffle
-        
+        self.model = model_name
         self.n = len(self.df)
         self.n_id = ((df[y_col['id']]).nunique())
         self.n_domain = 4
-    
-        
+
     def on_epoch_end(self):
         if self.shuffle:
             self.df = self.df.sample(frac=1).reset_index(drop=True)
     
     def __get_input(self, path):
 
-        image = tf.keras.preprocessing.image.load_img("AHC/" + path)
+        image = tf.keras.preprocessing.image.load_img(path)
         image_arr = tf.keras.preprocessing.image.img_to_array(image)
 
         return image_arr/255.
@@ -224,17 +221,22 @@ class TestingDataGenerator(tf.keras.utils.Sequence):
     
     def __get_data(self, batches):
         # Generates data containing batch_size samples
-
         path_batch = batches[self.X_col['path']]
-        sin_season_batch = batches[self.y_col['sin_date']]
-        cos_season_batch = batches[self.y_col['cos_date']]
-
+        name_batch = batches[self.y_col['id']]
         X_batch = np.asarray([self.__get_input(x) for x in path_batch])
+        y0_batch = np.asarray([self.__get_output(y, self.n_id) for y in name_batch])
 
-        y_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
-
-        # return X_batch, y0_batch
-        return X_batch, y_batch   
+        if self.model in ('DenseNet201', 'CNN'):
+            return X_batch, y0_batch
+        elif self.model in ('DANNseNet201', 'DANN'):
+            sin_season_batch = batches[self.y_col['sin_date']]
+            cos_season_batch = batches[self.y_col['cos_date']]
+            y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
+            return X_batch, tuple([y0_batch, y1_batch])
+        elif self.model in ('CatDANN'):
+            domain_batch = batches[self.y_col['domain']]
+            y1_batch = np.asarray([self.__get_input(y) for y in domain_batch])
+            return X_batch, tuple([y0_batch, y1_batch])
         
     def __getitem__(self, index):
         
