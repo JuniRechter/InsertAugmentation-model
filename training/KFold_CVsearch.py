@@ -536,7 +536,6 @@ def main():
 #        name = ("{} Group").format(args.group)
 
     print("Training data and options extracted. Preparing to load model.")
-#keras_tuner.HyperParameters()
     if args.hypmodel in ('DenseNet201', 'CNN'):
         print("Loading DenseNet201 model.")
         load_time = time.time()
@@ -659,15 +658,15 @@ def main():
     # Run the Hyperparameter Random Search
     print("Beginning hyperparameter random search.")
     if args.hypmodel in ('DenseNet201'):
-        tuner.search(traindf, class_names=class_names, validation_split=0.2,
+        tuner.search(class_names=class_names, validation_split=0.2,
                      batch_size=args.batch_size, epochs=args.epochs, 
                      callbacks=[es], verbose=2)
     elif args.hypmodel in ('DANNseNet201'):
-        tuner.search(traindf, class_names=class_names, validation_split=0.2, 
+        tuner.search(class_names=class_names, validation_split=0.2, 
                      batch_size=args.batch_size, epochs=args.epochs, 
                      callbacks=[es], verbose=2)
     elif args.hypmodel in ('CatDANN', 'catDANN'):
-        tuner.search(traindf, class_names=class_names, domain_names = seasons, 
+        tuner.search(class_names=class_names, domain_names = seasons, 
                      validation_split=0.2, batch_size=args.batch_size,
                      epochs=args.epochs, callbacks=[es], verbose=2)
 
