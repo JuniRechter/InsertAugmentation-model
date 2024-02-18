@@ -130,8 +130,8 @@ def generate_df(path, class_true, class_pred, classes, DANN=False, dom_true=None
 
             pred_dom=dom_pred.tolist()
             df[['pred_sine', 'pred_cosine']] = pd.DataFrame(pred_dom)
-            df['pred_sine'] =df['pred_sine']/0.8
-            df['pred_cosine'] =df['pred_cosine']/0.8
+#            df['pred_sine'] =df['pred_sine']/0.8
+ #           df['pred_cosine'] =df['pred_cosine']/0.8
             df['pred_DoY']=((np.arctan2(df.pred_sine, df.pred_cosine))*365)/(2*np.pi)
             df['pred_DoY'] = [(365 + ele) if ele <0 else ele for ele in df['pred_DoY']]
             df['pred_DoY'] = [(15 + ele) if ele <=350 else (ele + 15 - 365) for ele in df['pred_DoY']]
@@ -200,7 +200,7 @@ def generate_doy_truepred(df): #, legend="out"):
     figure = plt.figure(figsize=(12,12))
     axis = figure.add_subplot(111)
     cdict = {"Fall": '#E30513', "Winter": '#78D2EB', "Spring": '#62D658', "Summer": '#D68802'} #COLOURBLIND SAFE PALETTE
-    grouped = df.groupby("true_season")
+    grouped = df.groupby("true_season", observed=True)
 
     for key, group in grouped:
         group.plot(ax=axis, kind='scatter', x='true_DoY', y='pred_DoY', 
@@ -243,7 +243,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
         Hyparameters search evaluated using Stratified Cross-Validation over a
         parameter space.
         """
-        
+
         def __init__(self,
                      hypermodel,
                      kfoldcv: StratifiedKFold,
@@ -270,6 +270,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
             super(SKF_CV, self).__init__(hypermodel, *args, **kwargs)
             self._kfoldcv = kfoldcv
             self._group = group
+            self.df = df.copy()
             self._dataset = dataset
             self._model = model_name
             self._domain_names = domain_names
@@ -284,7 +285,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
 
             if self._kfoldcv == StratifiedGroupKFold and self._group is None:
                 raise ValueError("Grouping argument must be included if using the StratifiedGroupKFold CV Tuner.")
-                
+
         def search(self, *fit_args, **fit_kwargs):
             if "verbose" in fit_kwargs:
                 self._verbose = fit_kwargs.get("verbose")
@@ -316,17 +317,18 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                 self.on_trial_end(trial)
             self.on_search_end()
 
-        def run_trial(self, trial, df, class_names, *args, **kwargs):
+        def run_trial(self, trial, class_names, *args, **kwargs):
             original_callbacks = kwargs.pop("callbacks", [])
             classes = class_names
+            df = self.df
             if self._dataset == "AHC":
                 df['id'] = df['id']-1
             Y = np.array(df['id'])
             num_classes = (df['id'].nunique())
-            if self._model in ("DANNseNet201"):
-                df['adjsin_date2'] = df['adjsin_date']*0.8
-                df['adjcos_date2'] = df['adjcos_date']*0.8
-            
+#            if self._model in ("DANNseNet201"):
+ #               df['adjsin_date2'] = df['adjsin_date']*0.8
+  #              df['adjcos_date2'] = df['adjcos_date']*0.8
+
 #    class_weights = dict(zip(np.unique(y_train),
  #                            class_weight.compute_class_weight(class_weight = 'balanced',
   #                                                             classes= np.unique(y_train),
@@ -345,28 +347,28 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     if self._verbose ==2: tf.get_logger().info("\n" + "-" * 30 + "\n"
                                                            f"K-fold Cross-Validation {split + 1}/{self._kfoldcv.get_n_splits()}"
                                                            + "\n" + "-" * 30 + "\n")
-                    
+
                     train_df = df.iloc[train_index]
                     val_df = df.iloc[val_index]
-                                        
+
                     traingen = idg.TrainingDataGenerator(train_df,
                                                            batch_size = self._batch_size,
                                                            y_col = {'id': 'id', 'domain': 'domain', 
-                                                                    'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
+                                                                    'sin_date': 'adjsin_date', 'cos_date': 'adjcos_date'},
                                                            X_col = {'path': 'path'},
                                                            model_name=self._model,
                                                            shuffle = True)
                     valgen = idg.ValidationDataGenerator(val_df,
                                                          batch_size = self._batch_size,
                                                          y_col = {'id': 'id', 'domain': 'domain', 
-                                                                  'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
+                                                                  'sin_date': 'adjsin_date', 'cos_date': 'adjcos_date'},
                                                          X_col = {'path': 'path'},
                                                          model_name=self._model,
                                                          shuffle = True)
                     testgen = idg.ValidationDataGenerator(val_df,
                                                           batch_size=1,
                                                           y_col = {'id': 'id', 'domain': 'domain',
-                                                                   'sin_date': 'adjsin_date2', 'cos_date': 'adjcos_date2'},
+                                                                   'sin_date': 'adjsin_date', 'cos_date': 'adjcos_date'},
                                                           X_col = {'path': 'path'},
                                                           model_name=self._model,
                                                           shuffle = False)
@@ -382,7 +384,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     val_paths = np.array(val_df["path"])
                     y_val = np.array(val_df['id'])
                     y_val = tf.keras.utils.to_categorical(y_val, num_classes=num_classes)
-                    
+
                     if self._model in ("DANNseNet201"):
                         sin_date = np.array(val_df['adjsin_date'])
                         cos_date = np.array(val_df['adjcos_date'])
@@ -390,7 +392,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     elif self._model in ('CatDANN', 'catDANN'):
                         cat_domain = np.array(val_df['domain'])
                         true_dom = tf.keras.utils.to_categorical(cat_domain, num_classes=4)
-                        
+
                     # Set the validation set
                     copied_kwargs["validation_data"] = valgen
 
@@ -425,7 +427,6 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     trainhist = pd.DataFrame(history.history)
                     trainhist.to_csv(self.__get_filename_path(trial_path, "history", ".csv", execution, split))
 
-
                     # Evaluate train performance on best epoch
                     obj_value = model.evaluate(traingen,
                                                return_dict=True,
@@ -435,7 +436,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                     val_res = model.evaluate(valgen,
                                              return_dict=True,
                                              verbose=self._verbose,)
-                    
+
                     obj_value.update({"val_" + str(key): val for key, val in val_res.items()})
 
                     # Create and save CONFUSION MATRIX if requested
@@ -445,7 +446,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                         y_pred, dom_pred = model.predict(testgen, verbose=0)
                     elif self._model in ('catDANN', 'CatDANN'):
                         y_pred, predicted_dom = model.predict(testgen, verbose=0)
-                    
+
                     predicted_y = np.append(predicted_y, np.argmax(y_pred, axis=1))
                     true_y = np.append(true_y, np.argmax(y_val, axis=1))
                     if self._save_cm:
@@ -457,24 +458,24 @@ def Nested_SKF_Tuner(superclass: Tuner,):
                         self.__save_cm(true_y, predicted_y, class_names=classes, 
 #                            filenameL=self.__get_filename_path(trial_path, "Confusion_Matrix", "light.png", execution, split),
                             filenameD=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Confusion_Matrix"), "dark.png", execution, split))
-                    
+
                         if self._model in ('catDANN', 'CatDANN'):
                             tot_predicted_dom = np.append(tot_predicted_dom, dom_pred)
                             tot_true_dom = np.append(tot_true_dom, true_dom)
                             self.__save_cm(true_dom, predicted_dom, class_names=self._domain_names, 
                                 filenameD=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Season_Confusion_Matrix"), "dark.png", execution, split))
-                    
+
                     # Create and save DOMAIN PREDICTION VECTOR if requested
                     if self._save_domvec:
                         tot_predicted_dom = np.append(tot_predicted_dom, dom_pred)
                         tot_true_dom = np.append(tot_true_dom, sincos_val)
-                        df = generate_df(val_paths, true_y, predicted_y, classes, DANN=True, dom_true=sincos_val, dom_pred=dom_pred)
-                        df.to_csv(self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Val_predictions"), ".csv", execution, split))
+                        resultsdf = generate_df(val_paths, true_y, predicted_y, classes, DANN=True, dom_true=sincos_val, dom_pred=dom_pred)
+                        resultsdf.to_csv(self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Val_predictions"), ".csv", execution, split))
 
-                        self.__save_domvec(df, 
+                        self.__save_domvec(resultsdf, 
                                            Dom_filename=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_Domain_TruePred"), ".png", execution, split),
                                            DoY_filename=self.__get_filename_path(trial_path, (self._model +'_'+ self._group_name + "_DoY_TruePred_LegendIn"), ".png", execution, split))
- 
+
                      # Append training and validation scores to the histories
                     histories.append(obj_value)
 
@@ -519,7 +520,6 @@ def Nested_SKF_Tuner(superclass: Tuner,):
             hp = trial.hyperparameters
             model = self._try_build(hp)
             history = self.hypermodel.fit(hp, model, *args, **kwargs)
-
             return history, model
 
         def __save_output(self, model, x, filename):
@@ -532,12 +532,12 @@ def Nested_SKF_Tuner(superclass: Tuner,):
         def __save_history(self, history, filename):
             with open(filename, "w",) as fp:
                 json.dump(history.history, fp)
-        
+
         def __save_cm(self, y_true, y_pred, class_names, filenameD):
             cm = sklearn.metrics.confusion_matrix(y_true, y_pred)
             figureD = generate_confusion_matrix(cm, class_names, colour="dark")
             figureD.savefig(filenameD, dpi=300, bbox_inches='tight')
-           
+
         def __save_domvec(self, df, Dom_filename, DoY_filename):
             Dom_figure = generate_domain_truepred(df)
             Dom_figure.savefig(Dom_filename, dpi=300)
@@ -545,7 +545,7 @@ def Nested_SKF_Tuner(superclass: Tuner,):
             DoY_figure = generate_doy_truepred(df)
             DoY_figure.savefig(DoY_filename, dpi=300)
             plt.close(DoY_figure)
-            
+
         def load_model(self, trial):
             """
             Returns all models associated with a specific trial. The output is an array where
