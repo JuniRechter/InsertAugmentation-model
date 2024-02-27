@@ -16,6 +16,7 @@ from segment_anything import sam_model_registry, SamPredictor
 import argparse
 import time
 #import humanfriendly
+
 #%%
 '''
 This function ensures that our bounding boxes are in the correct format, otherwise they are returned as strings.
@@ -25,6 +26,7 @@ def literal_return(val):
         return ast.literal_eval(val)
     except (ValueError, SyntaxError) as e:
         return val
+
 #%%
 '''
 MegaDetector notes:
@@ -73,15 +75,19 @@ Grab our image and set the image height and width for later cropping and adjusti
 '''
 def gimme_animal(df,
                  output_directory="output_directory"):
-    
+
     df = pd.read_csv(df)
     df['bbox'] = df['bbox'].apply(literal_return)
     df = df.dropna(subset=['bbox'])
+    df = df.sample(n=50)
 
     #Note:  the int function here will generally round down, even if the float is 1.97, etc.
     for i in df.index:
         image = cv2.imread(df['path'][i])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        path = df['path'][i]
+        path = path.split('/')[3]
+        path = path[:-4]
         spp = df['species'][i]
         H = image.shape[0] #set the image height
         W = image.shape[1] #set the image width
@@ -98,26 +104,26 @@ def gimme_animal(df,
                                                   box=input_box[None, :],
                                                   multimask_output=True,
                                                   return_logits=False)
-        print(masks.shape) # (number_of_masks) x H x W
+#        print(masks.shape, flush=True) # (number_of_masks) x H x W
         for m, (mask, score) in enumerate(zip(masks, scores)):
-            print(masks[m].shape)
+#            print(masks[m].shape, flush=True)
             mask=np.reshape(masks[m], (H, W)) #change the mask shape to remove the first channel, but keep og dimensions
-            print(mask.shape)
+#            print(mask.shape, flush=True)
             #Masks are output as True, False, binaries for every pixel. Uint8 format changes that to 1s and 0s.
             mask=mask.astype(np.uint8)
             mask_image = (mask * 255).astype(np.uint8) #This mask_image output is the one we want.
             if not os.path.exists(output_directory + "/BWmask/" + spp):
                 os.makedirs(output_directory + "/BWmask/" + spp)
-            cv2.imwrite(output_directory + "/BWmask/" + spp + '/' + spp + '_mask' + str(m) + ".png", mask_image)
-            
+            cv2.imwrite(output_directory + "/BWmask/" + spp + '/' + path + '_mask_' + str(m) + ".png", mask_image)
+
 #            image = cv2.imread(i)
 #            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) #Read into the BGR format cos CV2 is weird about RGB
             image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA) #add alpha layer to the image
             image[:, :, 3] = mask_image #Apply mask to the alpha layer
             if not os.path.exists(output_directory + "/blackBG/" + spp):
                 os.makedirs(output_directory + "/blackBG/" + spp)
-            cv2.imwrite(output_directory + "/blackBG/" + spp + '_blkBGmask' + str(m) + ".png", cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
-    
+            cv2.imwrite(output_directory + "/blackBG/" + spp + '/' + path + '_blkBGmask' + str(m) + ".png", cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
+
             #image crop takes the form y1:y2, x1:x2 #Yeah I don't know, bboxes are dumb
             y1=input_box[1]
             y2=input_box[3]
@@ -126,15 +132,15 @@ def gimme_animal(df,
             cropped_image = image[y1:y2, x1:x2] #apply MD box here to reduce the amount of empty space
             if not os.path.exists(output_directory + "/cropped/" + spp):
                 os.makedirs(output_directory + "/cropped/" + spp)
-            cv2.imwrite(output_directory + "/cropped/" + spp + '_croppedmask' + str(m) + ".png", cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
+            cv2.imwrite(output_directory + "/cropped/" + spp + '/' + path + '_croppedmask' + str(m) + ".png", cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
+        if i%30 ==0:
             print(((df['path'][i]) + " segmented and saved. \nImage {} of {}.").format(i, len(df)), flush=True)
-
 #%% Command-line driver
 
 def main():
-    
+
     parser = argparse.ArgumentParser(
-        description='Program to segment and cut-out animals from CT images and save them as masking layers and segmentations for later insertion into empty CT images.')
+        description='Program to crop info-bars from CT images and resize in preparation for ML input')
     parser.add_argument('df', 
                         type=str,
                         help='Path to directory of images.')
@@ -156,7 +162,7 @@ def main():
     sam_checkpoint = "sam_vit_h_4b8939.pth"
     model_type = "vit_h"
     device = "cuda"
-    
+
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
     sam.to(device=device)
     predictor = SamPredictor(sam)
