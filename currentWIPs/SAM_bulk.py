@@ -13,7 +13,7 @@ import pandas as pd
 import cv2
 import torch
 from segment_anything import sam_model_registry, SamPredictor
-import matplotlib.pyplot as plt
+import argparse
 import time
 #import humanfriendly
 #%%
@@ -71,14 +71,18 @@ predictor = SamPredictor(sam)
 '''
 Grab our image and set the image height and width for later cropping and adjusting mask dimensions.
 '''
-def get_animal(df):
+def gimme_animal(df,
+                 output_directory="output_directory"):
+    
     df = pd.read_csv(df)
     df['bbox'] = df['bbox'].apply(literal_return)
-    
+    df = df.dropna(subset=['bbox'])
+
     #Note:  the int function here will generally round down, even if the float is 1.97, etc.
-    for i in df['path']:
-        image = cv2.imread(i)
+    for i in df.index:
+        image = cv2.imread(df['path'][i])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        spp = df['species'][i]
         H = image.shape[0] #set the image height
         W = image.shape[1] #set the image width
         bbox = df['bbox'][i] #grab bbox values
@@ -94,19 +98,25 @@ def get_animal(df):
                                                   box=input_box[None, :],
                                                   multimask_output=True,
                                                   return_logits=False)
-        masks.shape  # (number_of_masks) x H x W
-        for m in masks:
+        print(masks.shape) # (number_of_masks) x H x W
+        for m, (mask, score) in enumerate(zip(masks, scores)):
+            print(masks[m].shape)
             mask=np.reshape(masks[m], (H, W)) #change the mask shape to remove the first channel, but keep og dimensions
+            print(mask.shape)
             #Masks are output as True, False, binaries for every pixel. Uint8 format changes that to 1s and 0s.
             mask=mask.astype(np.uint8)
             mask_image = (mask * 255).astype(np.uint8) #This mask_image output is the one we want.
-            cv2.imwrite('mask.png', mask_image)
+            if not os.path.exists(output_directory + "/BWmask/" + spp):
+                os.makedirs(output_directory + "/BWmask/" + spp)
+            cv2.imwrite(output_directory + "/BWmask/" + spp + '/' + spp + '_mask' + str(m) + ".png", mask_image)
             
 #            image = cv2.imread(i)
 #            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) #Read into the BGR format cos CV2 is weird about RGB
             image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA) #add alpha layer to the image
             image[:, :, 3] = mask_image #Apply mask to the alpha layer
-            cv2.imwrite('masked_image3.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
+            if not os.path.exists(output_directory + "/blackBG/" + spp):
+                os.makedirs(output_directory + "/blackBG/" + spp)
+            cv2.imwrite(output_directory + "/blackBG/" + spp + '_blkBGmask' + str(m) + ".png", cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
     
             #image crop takes the form y1:y2, x1:x2 #Yeah I don't know, bboxes are dumb
             y1=input_box[1]
@@ -114,72 +124,55 @@ def get_animal(df):
             x1=input_box[0]
             x2=input_box[2]
             cropped_image = image[y1:y2, x1:x2] #apply MD box here to reduce the amount of empty space
-            cv2.imwrite('cropped_mask_image.png', cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
-#%%
-def show_mask(mask, ax, random_color=False):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
-    h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image)
+            if not os.path.exists(output_directory + "/cropped/" + spp):
+                os.makedirs(output_directory + "/cropped/" + spp)
+            cv2.imwrite(output_directory + "/cropped/" + spp + '_croppedmask' + str(m) + ".png", cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
+            print(((df['path'][i]) + " segmented and saved. \nImage {} of {}.").format(i, len(df)), flush=True)
+
+#%% Command-line driver
+
+def main():
     
-def show_points(coords, labels, ax, marker_size=375):
-    pos_points = coords[labels==1]
-    neg_points = coords[labels==0]
-    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
-    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)   
+    parser = argparse.ArgumentParser(
+        description='Program to segment and cut-out animals from CT images and save them as masking layers and segmentations for later insertion into empty CT images.')
+    parser.add_argument('df', 
+                        type=str,
+                        help='Path to directory of images.')
+    parser.add_argument('output_directory', 
+                        type=str,
+                        help='Path to the directory to save resized images.')
+
+    if len(sys.argv[1:]) == 0:
+        parser.print_help()
+        parser.exit()
+
+    args = parser.parse_args()
+
+    assert os.path.exists(args.df), \
+        'df {} does not exist'.format(args.df)            
+    assert os.path.exists(args.output_directory), \
+        'Output directory {} does not exist'.format(args.output_directory)
+
+    sam_checkpoint = "sam_vit_h_4b8939.pth"
+    model_type = "vit_h"
+    device = "cuda"
     
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='red', facecolor=(0,0,0,0), lw=2)) 
-#%%
-for i, (mask, score) in enumerate(zip(masks, scores)):
-    plt.figure(figsize=(10,10))
-    plt.imshow(image)
-    show_mask(mask, plt.gca())
-    show_box(input_box, plt.gca())
-    plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
-    plt.axis('off')
-    plt.show()
-#%%
-'''
-Here we convert the mask from a binary format (where every pixel is represented by either 'True' or 'False'), 
-to a readable uint8 format (where pixels are represented by '1' or '0'). 
-We then multiply these values by 255, the maximum value in an RGB pixel channel, where 255 is a full/True pixel, and 
-0 is an empty/False pixel.
-This format is readable by CV2 as a black and white mask which can be applied to other images. 
-'''
-#Constructing readable mask for cv2
-mask=np.reshape(masks[1], (H, W)) #change the mask shape to remove the first channel, but keep og dimensions
-#Masks are output as True, False, binaries for every pixel. Uint8 format changes that to 1s and 0s.
-mask=mask.astype(np.uint8)
-mask_image = (mask * 255).astype(np.uint8) #This mask_image output is the one we want.
-cv2.imwrite('mask.png', mask_image)
-#%%
-'''
-If we apply the original uint8 mask to an image, it will keep the black background, which can make things harder 
-for inserting animals later. Nevertheless, this clarifies what the final image will include.
-'''
-#Constructing image with positive mask elements, but background remains black
-output = cv2.bitwise_and(image, image, mask = mask)
-cv2.imwrite('masked_image2.png', cv2.cvtColor(output, cv2.COLOR_RGB2BGR)) 
-#%%
-'''
-Add an alpha layer to the original image. The alpha layer determines the opacity or transparency of each pixel.
-Even if the other 3 channels create "blue", an alpha value of 0 means this pixel is transparent.
-We apply the black and white mask to this alpha layer. Black changes the alpha to 0, white to 1.
-This removes opacity in areas where the mask is black, therefore leaving only the animal mask we want with 
-with a transparent background. 
-'''
-image = cv2.imread("original/03290020.JPG")
-image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) #Read into the BGR format cos CV2 is weird about RGB
-image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA) #add alpha layer to the image
-image[:, :, 3] = mask_image #Apply mask to the alpha layer
-cv2.imwrite('masked_image3.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
-#%%
-cropped_image = image[1900:2800, 800:1900] #apply MD box here to reduce the amount of empty space
-plt.imshow(cropped_image)
-cv2.imwrite('cropped_mask_image.png', cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam.to(device=device)
+    predictor = SamPredictor(sam)
+
+    print("SamPredictor initiated. Running segmentation.", flush=True)
+
+    start_time = time.time()
+
+    gimme_animal(df=args.df,
+                 output_directory=args.output_directory)
+
+    elapsed = time.time() - start_time
+
+    print("I'm finished! Finally, I'm a beautiful butterfly!")
+    print(('Finished segmenting images in {:.3f} seconds.').format(elapsed))
+#    print(('Finished segmenting images in {}.').format(humanfriendly.format_timespan(elapsed)))
+
+if __name__ == '__main__':
+    main()
