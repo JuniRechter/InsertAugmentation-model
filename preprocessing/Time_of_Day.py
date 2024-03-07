@@ -12,38 +12,19 @@ import pandas as pd
 import cv2
 import argparse
 import time
-#import humanfriendly
+import humanfriendly
 
 #%%
-os.getcwd() #find current working directory, and set directory below
-#os.chdir("C:/Users/hayle/OneDrive/Desktop/test_images/original/AHC")
-os.chdir('D:/hayle/Documents/University of Guelph/AI Project Data/crops/AHC_masks')
-#%%
-night = "AHC/Empty/Night/"
-path = "original/"
-image = cv2.imread("cropped/bear/GL_RAF002_2022-07-26-15-33-58_07260025_bear_mask.png", cv2.IMREAD_UNCHANGED)
-img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-img_hsv[:, :, 1].mean()
-#%%
-def check_ToD(image_directory="image_directory"): #,
-       #        CT="CT",
-        #       output_directory="output_directory"):
+def check_ToD(image_directory="image_directory"): 
+
     """
-    This function crops and resizes images within a directory and saves them to a specified
-    output directory.
-
+    This function checks images to determine if they were taken at night with infrared or during 
+    the day with full colour.
+    Note that this version works for full three-channel CT images, but not for image masks/crops. 
+    
     Inputs:
     - image_directory: str, set the directory to pull images from. 
     
-    - CT: str, set which camera trap dataset is being used for specific transformations.
-    no default set. Enter "AHC" or "MNRF"
-        
-    - output_directory: str, set the directory to save the resized images to,
-      NOTE: Setting the output to the same directory as the input will cause original images 
-      to be saved over. Be sure you are using a COPY!
-
-    Output: the cropped and resized images within the output directory.
-
     """
     data=[]
     for directory, subdirs, files in os.walk(image_directory):
@@ -63,25 +44,15 @@ def check_ToD(image_directory="image_directory"): #,
     return df
 
 #%%
-def check_crops(image_directory="image_directory"): #,
-       #        CT="CT",
-        #       output_directory="output_directory"):
+def check_crops(image_directory="image_directory"): 
     """
-    This function crops and resizes images within a directory and saves them to a specified
-    output directory.
-
+    This function checks animal mask crops to determine if they were taken at night with infrared or during 
+    the day with full colour.
+    Note that this version works for four-channeled .PNG animal masks, but not for the original CT images. 
+    
     Inputs:
     - image_directory: str, set the directory to pull images from. 
     
-    - CT: str, set which camera trap dataset is being used for specific transformations.
-    no default set. Enter "AHC" or "MNRF"
-        
-    - output_directory: str, set the directory to save the resized images to,
-      NOTE: Setting the output to the same directory as the input will cause original images 
-      to be saved over. Be sure you are using a COPY!
-
-    Output: the cropped and resized images within the output directory.
-
     """
     data=[]
     for directory, subdirs, files in os.walk(image_directory):
@@ -100,30 +71,7 @@ def check_crops(image_directory="image_directory"): #,
     df = pd.DataFrame(data)
     return df
 
-#%% Command-line driver
-
-'''
-The strbool argparse type definition is derived from StackOverflow user maxim. 
-Source: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse/43357954#43357954
-'''
-
-def strbool(string):
-    if isinstance(string, bool):
-        return string
-    if string.lower() in ('true', 't', 'yes', 'y'):
-        return True
-    elif string.lower() in ('false', 'f', 'no', 'n'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected. Enter either "True" or "False".')
-
-def strformat(string):
-    if string.lower() in ('png', '.png', 'p'):
-        return "png"
-    elif string.lower() in ('jpg', 'jpeg', '.jpg', '.jpeg', 'j'):
-        return "jpg"
-    else:
-        raise argparse.ArgumentTypeError('Image format expected. Enter either "png" or "jpg".')        
+#%% Command-line driver  
 
 def main():
     
@@ -134,12 +82,11 @@ def main():
                         help='Path to directory of images.')
     parser.add_argument('image_type', 
                         type=str,
-                        help='Select if you are checking time-of-day on empty CT images or animal crops.')
-    parser.add_argument('output_directory', 
+                        help='Str, enter if you are checking original CT images or animal crops.' +\
+                       'Enter either "empties" or "masks".)
+    parser.add_argument('save', 
                         type=str,
-                        help='Path to the directory to save resized images.')
-
-
+                        help='Enter filename for the created CSV file.')
 
     if len(sys.argv[1:]) == 0:
         parser.print_help()
@@ -152,18 +99,20 @@ def main():
     if os.path.exists(args.output_directory):
         print('Warning: output_file {} already exists and will be overwritten'.format(
             args.output_directory))
+    assert args.image_type in ('empty', 'empties', 'CT', 'crops', 'masks'), \
+        'Cannot select function for "{}". Please enter either "CT" or "empties" for full CT image, or "masks" for animal masks.'.format(args.image_type)
 
 
     start_time = time.time()
     print("Starting check.")
-    if args.image_type in ('empty', 'empties'):
+    if args.image_type in ('empty', 'empties', 'CT'):
         df = check_ToD(image_directory=args.image_directory)
     elif args.image_type in ('crops', 'masks'):
         df = check_crops(image_directory=args.image_directory)
 
     elapsed = time.time() - start_time
 
-    df.to_csv(args.output_directory + ".csv", index=False)
+    df.to_csv(args.save + ".csv", index=False)
 
     print("I'm finished! Finally, I'm a beautiful butterfly!")
     print(('Finished checking Time of Day in {:.3f} seconds.').format(elapsed))
