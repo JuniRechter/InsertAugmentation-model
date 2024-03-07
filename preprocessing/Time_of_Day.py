@@ -1,8 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Mar  6 09:29:07 2024
-
 @author: Juniper Rechter
+
+This file contains functions checking if either an original camera trap (CT) image (.JPG)
+or a SAM-animal mask crop (.PNG) was taken with infrared at nighttime. These functions will
+open images and check the mean saturation of the image; if saturation<5, the image was likely 
+taken at night, and the script will assign Night: True.
+This will output a .CSV file (containing the image filename and its boolean Night value) that 
+can be merged with other dataframes along the filename to update the main dataset. 
+
+When running from a command-line, be sure to include the argument for image type:
+    Inputs:
+    - image_directory: str, path to directory of images.
+    - image_type: str, for original CT image, enter one of: "CT", "empties", "empty"
+                       for SAM-animal mask crop, enter one of: "masks", "crops"
+    - save: str, enter filename for the created CSV file.
+
+Example:
+    python Time_of_Day.py AHC masks AHC_masks_ToD
 """
 
 import os
@@ -116,6 +132,7 @@ def main():
 
     print("I'm finished! Finally, I'm a beautiful butterfly!")
     print(('Finished checking Time of Day in {:.3f} seconds.').format(elapsed))
+    print(('Finished resizing images in {}.').format(humanfriendly.format_timespan(elapsed)))
 
 if __name__ == '__main__':
     main()
