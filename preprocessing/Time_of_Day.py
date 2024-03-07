@@ -5,10 +5,13 @@ Created on Wed Mar  6 09:29:07 2024
 
 This file contains functions checking if either an original camera trap (CT) image (.JPG)
 or a SAM-animal mask crop (.PNG) was taken with infrared at nighttime. These functions will
-open images and check the mean saturation of the image; if saturation<5, the image was likely 
-taken at night, and the script will assign Night: True.
+open images and check the mean saturation of the image; if saturation < 5, the image was likely 
+taken at night with infrared, and the script will assign Night: True.
 This will output a .CSV file (containing the image filename and its boolean Night value) that 
 can be merged with other dataframes along the filename to update the main dataset. 
+
+This script is quite fast: for ~50,000 full-sized crops (~20GB images), it only requires ~1GB memory, and will
+complete Time-of-Day check in ~10-15 mins. Can easily be run on laptops and potatoes. 
 
 When running from a command-line, be sure to include the argument for image type:
     Inputs:
@@ -23,7 +26,6 @@ Example:
 
 import os
 import sys
-import numpy as np
 import pandas as pd
 import cv2
 import argparse
