@@ -100,7 +100,7 @@ def main():
     parser.add_argument('image_type', 
                         type=str,
                         help='Str, enter if you are checking original CT images or animal crops.' +\
-                       'Enter either "empties" or "masks".)
+                       'Enter either "empties" or "masks".')
     parser.add_argument('save', 
                         type=str,
                         help='Enter filename for the created CSV file.')
