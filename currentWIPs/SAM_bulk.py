@@ -74,24 +74,29 @@ predictor = SamPredictor(sam)
 Grab our image and set the image height and width for later cropping and adjusting mask dimensions.
 '''
 def gimme_animal(df,
+                 CT="CT",
                  output_directory="output_directory"):
 
     df = pd.read_csv(df)
     df['bbox'] = df['bbox'].apply(literal_return)
     df = df.dropna(subset=['bbox'])
-    df = df.sample(n=50)
+    df = df.dropna(subset=['species'])
 
-    #Note:  the int function here will generally round down, even if the float is 1.97, etc.
     for i in df.index:
         image = cv2.imread(df['path'][i])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         path = df['path'][i]
-        path = path.split('/')[3]
+        if CT=="AHC":
+            path = path.split('/')[3]
+        elif CT=="MNRF":
+            root, year, area, filename = path.split('/')
+            path = area + '~' + filename
         path = path[:-4]
         spp = df['species'][i]
         H = image.shape[0] #set the image height
         W = image.shape[1] #set the image width
         bbox = df['bbox'][i] #grab bbox values
+    #Note:  the int function here will generally round down, even if the float is 1.97, etc.
         input_box = [int(bbox[0]*W),                        #x1
                      int(bbox[1] * H),                      #y1 
                      int((bbox[0] * W) + (bbox[2] * W)),    #x2
@@ -104,37 +109,22 @@ def gimme_animal(df,
                                                   box=input_box[None, :],
                                                   multimask_output=True,
                                                   return_logits=False)
-#        print(masks.shape, flush=True) # (number_of_masks) x H x W
-        for m, (mask, score) in enumerate(zip(masks, scores)):
-#            print(masks[m].shape, flush=True)
-            mask=np.reshape(masks[m], (H, W)) #change the mask shape to remove the first channel, but keep og dimensions
-#            print(mask.shape, flush=True)
-            #Masks are output as True, False, binaries for every pixel. Uint8 format changes that to 1s and 0s.
-            mask=mask.astype(np.uint8)
-            mask_image = (mask * 255).astype(np.uint8) #This mask_image output is the one we want.
-            if not os.path.exists(output_directory + "/BWmask/" + spp):
-                os.makedirs(output_directory + "/BWmask/" + spp)
-            cv2.imwrite(output_directory + "/BWmask/" + spp + '/' + path + '_mask_' + str(m) + ".png", mask_image)
+        mask = np.reshape(masks[1], (H, W))
+        mask=mask.astype(np.uint8)
+        mask_image = (mask *255).astype(np.uint8)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA)
+        image[:, :, 3] = mask_image
+        y1=input_box[1]
+        y2=input_box[3]
+        x1=input_box[0]
+        x2=input_box[2]
+        cropped_image = image[y1:y2, x1:x2]
+        if not os.path.exists(output_directory + "/cropped/" + spp):
+            os.makedirs(output_directory + "/cropped/" + spp)
+        cv2.imwrite(output_directory + "/cropped/" + spp + "/" + path + "_" + spp + "_mask" + ".png", cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
+        if (i+1)%50==0:
+            print(((df['path'][i]) + " segmented and saved. \n Image {} of {}.").format((i+1), len(df)), flush=True)
 
-#            image = cv2.imread(i)
-#            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) #Read into the BGR format cos CV2 is weird about RGB
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA) #add alpha layer to the image
-            image[:, :, 3] = mask_image #Apply mask to the alpha layer
-            if not os.path.exists(output_directory + "/blackBG/" + spp):
-                os.makedirs(output_directory + "/blackBG/" + spp)
-            cv2.imwrite(output_directory + "/blackBG/" + spp + '/' + path + '_blkBGmask' + str(m) + ".png", cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)) #Convert back to the correct form for saving. 
-
-            #image crop takes the form y1:y2, x1:x2 #Yeah I don't know, bboxes are dumb
-            y1=input_box[1]
-            y2=input_box[3]
-            x1=input_box[0]
-            x2=input_box[2]
-            cropped_image = image[y1:y2, x1:x2] #apply MD box here to reduce the amount of empty space
-            if not os.path.exists(output_directory + "/cropped/" + spp):
-                os.makedirs(output_directory + "/cropped/" + spp)
-            cv2.imwrite(output_directory + "/cropped/" + spp + '/' + path + '_croppedmask' + str(m) + ".png", cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGBA))
-        if i%30 ==0:
-            print(((df['path'][i]) + " segmented and saved. \nImage {} of {}.").format(i, len(df)), flush=True)
 #%% Command-line driver
 
 def main():
