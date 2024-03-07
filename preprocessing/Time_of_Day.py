@@ -13,8 +13,7 @@ can be merged with other dataframes along the filename to update the main datase
 This script is quite fast: for ~50,000 full-sized crops (~20GB images), it only requires ~1GB memory, and will
 complete Time-of-Day check in ~10-15 mins. Can easily be run on laptops and potatoes. 
 
-When running from a command-line, be sure to include the argument for image type:
-    Inputs:
+Command-line arguments:
     - image_directory: str, path to directory of images.
     - image_type: str, for original CT image, enter one of: "CT", "empties", "empty"
                        for SAM-animal mask crop, enter one of: "masks", "crops"
