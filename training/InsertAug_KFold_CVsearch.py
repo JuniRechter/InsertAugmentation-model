@@ -84,7 +84,7 @@ def cat_wf1(true_y, pred_y):
     #for metrics include these two lines, for loss, don't include them
     #these are meant to round 'pred' to exactly zeros and ones
     predLabels = K.argmax(pred_y, axis=-1)
-    pred_y = K.one_hot(predLabels, 6) 
+    pred_y = K.one_hot(predLabels, 4) 
 
 
     ground_positives = K.sum(true_y, axis=0) + K.epsilon()       # = TP + FN
@@ -199,7 +199,7 @@ def macroSoftF1(y, y_hat, from_logits = True):
     return macroCost
 
 #%%
-def get_group(traindf, group):
+def get_group(train_df, group):
     """
     Stratified Group K-fold cross validation requires an extra group around which to split the data.
     This function returns that group data as an array. 
@@ -219,7 +219,7 @@ def get_group(traindf, group):
         
     """
     
-    train_df = pd.read_csv(traindf)
+ #   train_df = pd.read_csv(traindf)
 
     if group in ("CTloc"):
         CTloc_train = np.array(train_df['Camera_loc'])
@@ -237,13 +237,14 @@ def get_group(traindf, group):
 #%%
 #Construct DenseNet201 base model
 class DenseNet201model(keras_tuner.HyperModel):
-    def __init__(self, nclass, dataset):
+    def __init__(self, nclass, dataset, lr):
         self._nclass = nclass
         self._dataset = dataset
+        self._lr = lr
         
     def build(self, hp):
         model = densenet.DenseNet201(weights="imagenet", include_top=False, input_shape=(224,224,3), pooling="avg")
-        model.trainable = False    
+        model.trainable = False
         regularizer = None
         out = kl.Dense(256, activation="relu", kernel_regularizer=regularizer)(model.layers[-1].output)
        # out = kl.Dense(hp.Choice('Dense1Units', values=[128, 256]),
@@ -264,8 +265,8 @@ class DenseNet201model(keras_tuner.HyperModel):
         model = tf.keras.Model(inputs=model.inputs,
                                outputs=spp_class)
     
-    #    lr=0.002
-        lr=hp.Float("lr", min_value=0.0001, max_value=0.1, sampling="log")
+        lr=self._lr
+    #    lr=hp.Float("lr", min_value=0.0001, max_value=0.1, sampling="log")
         opt=Adam(learning_rate=lr)
         loss="categorical_crossentropy"
       #  loss=macroSoftF1
@@ -327,8 +328,8 @@ class DANNseNet201model(keras_tuner.HyperModel):
     #                           outputs=[out_class, sine, cosine])
                                outputs=[spp_class, domain])
     
-    #    lr=hp.Choice("lr", values=[0.0023, 0.0066, 0.0095, 0.01247, 0.0139])
-        lr=0.0109
+#        lr=hp.Choice("lr", values=[0.0018, 0.0023, 0.0066, 0.0095, 0.01247, 0.0139])
+        lr=0.002 #0.0109
         opt=Adam(learning_rate=lr)
     
         losses = {"spp_class": 'categorical_crossentropy', 
@@ -336,7 +337,7 @@ class DANNseNet201model(keras_tuner.HyperModel):
     #    losses = {"out_class": 'categorical_crossentropy', "out_domain": "cosine_similarity"}
     
         randomlossWeights = {"spp_class": 1, 
-                             "domain":  0.1}
+                             "domain":  0.7}
     
         metrics=["accuracy", weighted_F1] #,
     #              tf.keras.metrics.Precision(name="precision"),
@@ -391,7 +392,7 @@ class catDANNseNet201model(keras_tuner.HyperModel):
     
         #categorical domain output
         ReverseGrad = ReversalLayer()(out)
-        domain = kl.Dense(2, activation="softmax", name="domain")(ReverseGrad)
+        domain = kl.Dense(4, activation="softmax", name="domain")(ReverseGrad)
     #    out_domain = kl.Dense(3, activation="softmax", name="out_domain")(ReverseGrad)
     
         model = tf.keras.Model(inputs=model.inputs,
@@ -399,16 +400,17 @@ class catDANNseNet201model(keras_tuner.HyperModel):
                                outputs=[spp_class, domain])
     
     #    lr=hp.Choice("lr", values=[0.0023, 0.0066, 0.0095, 0.01247, 0.0139])
-        lr=0.0109
+        lr=hp.Float("lr", min_value=0.0001, max_value=0.0095) 
+#        lr=0.0023
         opt=Adam(learning_rate=lr)
     
-        losses = {"class": 'categorical_crossentropy', 
+        losses = {"spp_class": 'categorical_crossentropy', 
                   "domain": "categorical_crossentropy"}
     #    losses = {"class": 'categorical_crossentropy', 
     #              "domain": "mean_squared_error"}
-    
+
         randomlossWeights = {"spp_class": 1, 
-                             "domain":  0.1}
+                             "domain":  hp.Float("weight", min_value=0.7, max_value=0.9, step=0.2)}
     
         if self._dataset in ("AHC"):
             DANNmetrics={"spp_class":["accuracy", 
@@ -457,6 +459,9 @@ def main():
                         type=str,
                         help='Which model would you like to use?'+ \
                             'Options: "DenseNet201", "DANNseNet201", "catDANN".')
+    parser.add_argument('lr', 
+                        type=float,
+                        help='Enter a float value for the learning rate.')
     parser.add_argument('save', 
                         type=str,
                         help='What would you like to name the save file?')
@@ -466,10 +471,48 @@ def main():
                         help='Str, enter "True" or "t" or "False" or "f" if Cross-validation should be nested. ' +\
                             'Argument can be either upper or lower case. ' +\
                             'Default is False.')
-#    parser.add_argument('cv', 
-#                        type=str,
-#                        help='What type of cross validation would you like to use?'+ \
-#                            'Options: "StratifiedKFold" ("skf") or "StratifiedGroupKFold" ("sgkf").')
+    parser.add_argument('INSERTS',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('SPP_BAL',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('NIGHT_BAL',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('LOC_BAL',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('UPSAMPLED',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('UNSEEN',
+                        type=strbool,
+                        default=False,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
+    parser.add_argument('MAX_SAMPLE',
+                        type=int,
+                        default=80000,
+                        help='StrBool, enter "True" or "t" or "False" or "f" if animal inserts should be included. ' +\
+                            'Argument can be either upper or lower case. ' +\
+                            'Default is False.')
     parser.add_argument('--nfold', 
                         type=int,
                         default=5,
@@ -506,9 +549,17 @@ def main():
 #        'df {} does not exist'.format(args.testdf)
 
     traindf = pd.read_csv(args.traindf)
+
+    crops = pd.read_csv("crops.csv")
+    majority_spp= ["deer", "fox", "moose", "bear", "sandhill crane", "wolf", "bobcat"]
+    mask = crops['species'].isin(majority_spp)
+    crops = crops[mask]
+
+    empties = pd.read_csv("empties.csv")
+
     if args.dataset in ("AHC"):
-        class_names = ['moose', 'fox', 'deer', 'sandhill crane', 'bear', 'domestic dog']
-        nclass = 6
+        class_names = ['empty', "deer", "fox", "moose", "bear", "sandhill crane", "wolf", "bobcat"]
+        nclass = 8
     elif args.dataset in ("MNRF"):
         class_names = ['snowshoe_hare', 'American black_bear', 'moose', 
                       'red_squirrel', 'white-tailed deer', 'ruffed_grouse', 
@@ -518,34 +569,26 @@ def main():
     seasons = ['fall', 'winter', 'spring', 'summer']
 
     if args.group:
-        group = get_group(args.traindf, args.group)
         kfold = StratifiedGroupKFold(n_splits=args.nfold, shuffle=True, random_state=42)
         name = ("{} Group").format(args.group)
         group_name = args.group
     else:
-        group = None
         kfold = StratifiedKFold(n_splits=args.nfold, shuffle=True, random_state=42)
         name = "Random"
         group_name = "CTRand"
-    
-#    if args.cv in ('StratifiedKFold', 'SKF', 'skf'):
-#        kfold = StratifiedKFold(n_splits=args.nfold, shuffle=True, random_state=42)
-#        name = "Random"
-#    elif args.cv in ('StratifiedGroupKFold', 'sgkf', 'SGKF'):
-#        kfold = StratifiedGroupKFold(n_splits=args.nfold, shuffle=True, random_state=42)
-#        name = ("{} Group").format(args.group)
 
     print("Training data and options extracted. Preparing to load model.")
     if args.hypmodel in ('DenseNet201', 'CNN'):
         print("Loading DenseNet201 model.")
         load_time = time.time()
-        model=DenseNet201model(nclass=nclass, dataset=args.dataset)
+        model=DenseNet201model(nclass=nclass, dataset=args.dataset, lr=args.lr)
         if args.nested==True:
             from SKFTuners import Nested_SKF_Tuner
             tuner = Nested_SKF_Tuner(BayesianOptimization)(model,
                                                  kfoldcv = kfold,
-                                                 group = group,
                                                  df=traindf,
+                                                 crops=crops,
+                                                 empties=empties,
                                                  dataset=args.dataset,
                                                  model_name = args.hypmodel,
                                                  class_names = class_names,
@@ -556,6 +599,13 @@ def main():
                                                  max_trials=args.trials,
                                                  save_output=False,
                                                  save_history=True,
+                                                 INSERTS=args.INSERTS,
+                                                 SPP_BAL=args.SPP_BAL,
+                                                 NIGHT_BAL=args.NIGHT_BAL,
+                                                 LOC_BAL=args.LOC_BAL,
+                                                 UPSAMPLE=args.UPSAMPLED,
+                                                 ADD_UNSEEN=args.UNSEEN,
+                                                 MAX_SAMPLE=args.MAX_SAMPLE,
                                                  directory="Results",
                                                  project_name=args.save,
                                                  seed=42,
@@ -567,7 +617,6 @@ def main():
             tuner = Outer_SKF_Tuner(kfoldcv = kfold,
                                     tuner_class = BayesianOptimization,
                                     hypermodel = DenseNet201model,
-                                    group = group,
                                     df = traindf,
                                     objective=Objective("val_accuracy", direction="max"),
                                     max_trials=args.trials,
@@ -584,7 +633,6 @@ def main():
             from SKFTuners import Nested_SKF_Tuner
             tuner = Nested_SKF_Tuner(BayesianOptimization)(hypermodel = model,
                                                  kfoldcv = kfold,
-                                                 group = group,
                                                  df=traindf,
                                                  dataset=args.dataset,
                                                  model_name = args.hypmodel,
@@ -607,7 +655,6 @@ def main():
             tuner = Outer_SKF_Tuner(kfoldcv = kfold,
                                     tuner_class = BayesianOptimization,
                                     hypermodel = DANNseNet201model,
-                                    group = group,
                                     df = traindf,
                                     objective=Objective("val_spp_class_accuracy", direction="max"),
                                     max_trials=args.trials,
@@ -624,7 +671,6 @@ def main():
             from SKFTuners import Nested_SKF_Tuner
             tuner = Nested_SKF_Tuner(BayesianOptimization)(hypermodel = model,
                                                  kfoldcv = kfold,
-                                                 group = group,
                                                  df=traindf,
                                                  dataset=args.dataset,
                                                  model_name = args.hypmodel,
@@ -636,7 +682,6 @@ def main():
                                                  max_trials=args.trials,
                                                  save_output=False,
                                                  save_history=True,
-                                                 save_domvec=True,
                                                  directory="Results",
                                                  project_name=args.save,
                                                  seed=42,)
@@ -651,7 +696,7 @@ def main():
     if args.hypmodel in ('DANNseNet201', 'CatDANN', 'catDANN'):
         es = EarlyStopping(monitor='val_spp_class_loss', mode='min', patience=15)
     else:
-        es = EarlyStopping(monitor='val_loss', mode='min', patience=15)
+        es = EarlyStopping(monitor='val_accuracy', mode='max', patience=15)
 
     start_time = time.time()  
     
@@ -666,7 +711,7 @@ def main():
                      batch_size=args.batch_size, epochs=args.epochs, 
                      callbacks=[es], verbose=2)
     elif args.hypmodel in ('CatDANN', 'catDANN'):
-        tuner.search(class_names=class_names, domain_names = seasons, 
+        tuner.search(class_names=class_names, #domain_names = seasons, 
                      validation_split=0.2, batch_size=args.batch_size,
                      epochs=args.epochs, callbacks=[es], verbose=2)
 
