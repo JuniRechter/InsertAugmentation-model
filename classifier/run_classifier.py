@@ -5,33 +5,27 @@ Created on Mon Aug 12 10:38:14 2024
 @author: Juniper Rechter
 
 Command-line arguments:
-    - classifier_file: str, 
-                       path to classifier model file (ending in ".keras"). 
+    - classifier_file: str, path to classifier model file (ending in ".keras"). 
                        Required argument.
-    - df: str, 
-          path to CSV file containing list of images to be evaluated.
-          Argument mutually exclusive with directory; must provide either CSV or directory.
-    - directory: str, 
-                 path to directory of images.
-                 Argument mutually exclusive with df, Must provide either directory or CSV.
-    - output_file: str, 
-                   path to output CSV results file, should end with a .csv extension.
-                   Required argument.
-    - --paths: str, 
-               name of the column/variable containing file paths. Can use if providing a CSV.
-               Pathing within CSV must be relative to directory the program is run from.
-               Optional argument.
-    - --top5: bool, 
-              would you like the model to output the top 5 predictions per image? Enter "True" or "t" or 
-              "False" or "f"; Argument can be either upper or lower case. Default is True.
-              Optional argument.
-    - --threshold: float, 
-                   confidence threshold between 0.0 and 1.0; only provide predictions above this threshold, 
-                   else prediction will return as "unknown" to flag user for verification. Default is None (disabled).
-                   Optional argument.
+    - df: str, path to CSV file containing list of images to be evaluated.
+                       Argument mutually exclusive with directory; must provide either CSV or directory.
+    - directory: str, path to directory of images.
+                       Argument mutually exclusive with df, Must provide either directory or CSV.
+    - output_file: str, path to output CSV results file, should end with a .csv extension.
+                       Required argument.
+    --paths: str, name of the column/variable containing file paths. Can use if providing a CSV.
+                       Pathing within CSV must be relative to directory the program is run from.
+                       Optional argument.
+    --top5: bool, would you like the model to output the top 5 predictions per image? Enter "True" or "t" or 
+                      "False" or "f"; Argument can be either upper or lower case. Default is True.
+                       Optional argument.
+    --threshold: float, confidence threshold between 0.0 and 1.0; only provide predictions above this threshold, 
+                       else prediction will return as "unknown" to flag user for verification. Default is None (disabled).
+                       Optional argument.
 
-Example:
-    python Time_of_Day.py AHC masks AHC_masks_ToD
+Examples:
+    python run_classifier.py path/to/AHC_SPP15_ID_mdl_wts.keras path/to/images results_file.csv --threshold 0.7
+    python run_classifier.py path/to/AHC_SPP15_ID_mdl_wts.keras path/to/dataframe.csv results_file.csv --paths filenames
 """
 
 import os
@@ -42,21 +36,22 @@ import keras
 import tensorflow as tf
 from PIL import ImageOps
 from tensorflow.keras.optimizers import Adam
-from ImageDataGenerators import PredictionDataGenerator
+import training.ImageDataGenerators as idg
 import argparse
 import time
 import humanfriendly
 
 #%%
+#%%
 def generate_file_df(image_directory):
-  '''
-  If no CSV file is provided with a list of image paths, this function will search a provided directory 
-  and create a CSV file containing the list for model prediction.
+    '''
+    If no CSV file is provided with a list of image paths, this function will search a provided directory 
+    and create a CSV file containing the list for model prediction.
   
-  Inputs:
-    - image_directory: str, set the directory to pull images from. 
+    Inputs:
+        - image_directory: str, set the directory to pull images from. 
     
-  '''
+    '''
     data=[]
     for directory, subdirs, files in os.walk(image_directory):
         rel_subdir = os.path.relpath(directory, start=image_directory)
@@ -71,37 +66,35 @@ def generate_file_df(image_directory):
 
 #%%
 def generate_results_df(df, y_pred, threshold=None, full_results=False):
-  '''
-  This function takes a provided DataFrame (either from user-given CSV file or a generated one) and adds 
-  model predictions and corresponding classes. It will provide the top prediction in one column, and the 
-  top-5 predictions and their corresponding confidence scores (%) in another column. The full list of 
-  predictions (14 species and 1 unknown class) and confidence scores can be given if requested. 
+    '''
+    This function takes a provided DataFrame (either from user-given CSV file or a generated one) and adds 
+    model predictions and corresponding classes. It will provide the top prediction in one column, and the 
+    top-5 predictions and their corresponding confidence scores (%) in another column. The full list of 
+    predictions (14 species and 1 unknown class) and confidence scores can be given if requested. 
   
-  Inputs:
-  - df:
-  - y_pred: array, the full array of results output by model prediction
-  - threshold: float, confidence threshold between 0.0 and 1.0; only provide predictions above this threshold, 
-               else an image prediction will return as "unknown" to flag user for verification. 
-               Default is None (disabled).
-  full_results: bool, would you like the model to output confidence scores for all 15 classes?
-                Default is False.
+    Inputs:
+    - df:
+    - y_pred: array, the full array of results output by model prediction
+    - threshold: float, confidence threshold between 0.0 and 1.0; only provide predictions above this threshold, 
+                 else an image prediction will return as "unknown" to flag user for verification. 
+                 Default is None (disabled).
+    - full_results: bool, would you like the model to output confidence scores for all 15 classes?
+                    Default is False.
   
-  '''
-
-    
+    '''
+  
     classes = ['deer', 'fox', 'moose', 'bear', 'sandhill crane',
-                  'turkey', 'raccoon', 'crow_raven', 'wolf', 'hare',
-                  'coyote', 'squirrel grey', 'domestic dog', 'bobcat', 
-                  'unknown']
+               'turkey', 'raccoon', 'crow_raven', 'wolf', 'hare',
+               'coyote', 'squirrel grey', 'domestic dog', 'bobcat', 
+               'unknown']
     class_dict = dict(enumerate(classes))
     
     class_pred = np.array([])
     class_pred = np.append(class_pred, np.argmax(y_pred, axis=1))
-    class_pred
+
     pred_class=(class_pred.astype(int)).tolist()
     df['ClassPred']=pred_class
     df['SpeciesPred'] = df['ClassPred'].apply(lambda x: class_dict[x])
-
     full_prediction = []
     percentages = []
     top5_preds = []
@@ -123,7 +116,7 @@ def generate_results_df(df, y_pred, threshold=None, full_results=False):
         df['Percentages']=percentages
     else:
         df.drop(columns='ClassPred', inplace=True)
-    
+      
     df.drop(columns='dummy_id', inplace=True)
     return df
 
@@ -182,8 +175,8 @@ sorted(zip())
 output_file = "dummy_file.csv"
 print('Warning: output_file {} already exists and will be overwritten. '.format(output_file) +\
       'If same as provided CSV file, original columns will remain intact.')
-#%% Command-line driver
 
+#%% Command-line driver
 '''
 The strbool argparse type definition is derived from StackOverflow user maxim. 
 Source: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse/43357954#43357954
@@ -220,23 +213,28 @@ def main():
                         help="Path to output CSV results file, should end with a .csv extension.")
     Optional = parser.add_argument_group('Optional arguments')
     Optional.add_argument('paths',
-                        type=str,
-                        default=None,
-                        help='str, name of the file path column/variable if providing a CSV. ' +\
-                             'Image pathing within CSV must be relative to directory program is run from.' +\
-                             'Default is "full_path')
+                          type=str,
+                          default=None,
+                          help='str, name of the file path column/variable if providing a CSV. ' +\
+                               'Image pathing within CSV must be relative to directory program is run from.' +\
+                               'Default is "full_path')
     Optional.add_argument('--top5',
-                        type=strbool,
-                        default=True,
-                        help='str, Would you like the model to output the top 5 predictions per image? ' +\
-                             'Enter "True" or "t" or "False" or "f"; Argument can be either upper or lower case. ' +\
-                             'Default is True.')
+                          type=strbool,
+                          default=True,
+                          help='str, Would you like the model to output the top 5 predictions per image? ' +\
+                               'Enter "True" or "t" or "False" or "f"; Argument can be either upper or lower case. ' +\
+                               'Default is True.')
     Optional.add_argument('--threshold',
-                        type=float,
-                        default=None,
-                        help='float, Confidence threshold between 0.0 and 1.0; only provide predictions above this ' +\
-                             'threshold, else prediction will return as "unknown" to flag user for verification. ' +\
-                             'Default is None (disabled).')
+                          type=float,
+                          default=None,
+                          help='float, Confidence threshold between 0.0 and 1.0; only provide predictions above this ' +\
+                               'threshold, else prediction will return as "unknown" to flag user for verification. ' +\
+                               'Default is None (disabled).')
+    Optional.add_argument('--full_results',
+                          action='store_true',
+                          help='float, Confidence threshold between 0.0 and 1.0; only provide predictions above this ' +\
+                               'threshold, else prediction will return as "unknown" to flag user for verification. ' +\
+                               'Default is None (disabled).')
 
     if len(sys.argv[1:]) == 0:
         parser.print_help()
@@ -246,25 +244,10 @@ def main():
     
     assert os.path.exists(args.classifier_file), \
         'classifier {} does not exist'.format(args.classifier_file)
-    assert os.path.exists(args.df), \
-        'df {} does not exist'.format(args.df)
-    assert os.path.exists(args.directory), \
-        'directory {} does not exist'.format(args.directory)
     if os.path.exists(args.output_file):
         print('Warning: output_file {} already exists and will be overwritten.'.format(args.output_file) +\
               'If you provided a CSV file, this will only add columns to original file.')
     
-    if args.classifier_file == "AHC_SPP15_ID_mdl_wts.keras":
-        model_name = "AHC_SPP15"
-    print(("Preparing to load {} classifer model.").format(model_name))
-    load_time = time.time()
-    AHCmodel = tf.keras.models.load_model(args.classifier_file, compile=False)
-    AHCmodel.compile(optimizer=Adam(learning_rate=1e-4), 
-                     loss="categorical_crossentropy", 
-                     metrics=["accuracy"])
-    elapsed = time.time() - load_time
-    print(('{} model loaded in {}.').format(model_name, humanfriendly.format_timespan(elapsed)))
-
     if args.df is None and args.directory is not None:
         assert os.path.exists(args.directory), \
             'directory {} does not exist'.format(args.directory)
@@ -279,17 +262,43 @@ def main():
             path = args.paths
         else:
             path = "full_path"
-    test_df['dummy_id']=0
-    testgen = PredictionDataGenerator(test_df,
-                                      batch_size=1,
-                                      y_col = {'id': 'dummy_id'},
-                                      X_col = {'path': path},
-                                      shuffle = False)
-    load_time = time.time()
-    y_pred = AHCmodel.predict(testgen, verbose=2)
-    elapsed = time.time() - load_time
+    else:
+        assert args.df is not None and args.directory is not None, \
+            'Must provide either a CSV dataframe or a directory.'
     
-    results_df = generate_results_df(test_df, y_pred)
+    test_df['dummy_id']=0
+    n_images = len(test_df)
+    testgen = idg.PredictionDataGenerator(test_df,
+                                          batch_size=1,
+                                          y_col = {'id': 'dummy_id'},
+                                          X_col = {'path': path},
+                                          shuffle = False)
+
+    if args.classifier_file == "AHC_SPP15_ID_mdl_wts.keras":
+        model_name = "AHC_SPP15"
+        
+    print(("Preparing to load {} classifer model.").format(model_name))
+    load_time = time.time()
+    AHCmodel = tf.keras.models.load_model(args.classifier_file, compile=False)
+    #Model compilation required due to some incompatibility between tf and keras.
+    AHCmodel.compile(optimizer=Adam(learning_rate=1e-4), 
+                     loss="categorical_crossentropy", 
+                     metrics=["accuracy"])
+    elapsed = time.time() - load_time
+    print(('{} model loaded in {}.').format(model_name, humanfriendly.format_timespan(elapsed)))
+    
+    start_time = time.time()
+    
+    results = AHCmodel.predict(testgen, verbose=2)
+    
+    model_run_time = time.time() - start_time
+    
+    images_per_second = n_images / model_run_time
+    print('Finished predictions for {} images in {} ({:.2f} images per second)'.format(n_images, 
+                                                                                       humanfriendly.format_timespan(model_run_time), 
+                                                                                       images_per_second))
+    
+    results_df = generate_results_df(test_df, results, args.threshold, full_results=args.full_results)
     results_df.to_csv(args.output_file, index=False)
     
 if __name__ == '__main__':
