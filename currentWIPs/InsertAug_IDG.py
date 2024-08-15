@@ -90,42 +90,33 @@ Winter_aug = iaa.SomeOf((1, 3), [  # Random number between 0, 3
 small_aug = iaa.SomeOf((1, 3), [  # Random number between 0, 3
         iaa.Fliplr(0.5),  # Horizontal flips                     0.01
         iaa.Multiply((0.95, 1.05), per_channel=0.2),  # Brightness multiplier per channel    0.05
-        iaa.Grayscale(alpha=(0.1, 1.0)),  # Random Grayscale conversion          0.17        
         iaa.LinearContrast((0.75, 1.5)),  # Contrast Normalization               0.95
         ], random_order=True)
 
 train_aug = iaa.SomeOf((1, 3), [  # Random number between 0, 3
         iaa.Fliplr(0.5),  # Horizontal flips                     0.01
-        # Random channel increase and rotation 0.03
         iaa.Add((-5, 5)),  # Overall Brightness                   0.04
         iaa.Multiply((0.95, 1.05), per_channel=0.2),  # Brightness multiplier per channel    0.05
-        iaa.Sharpen(alpha=(0.1, 0.75), lightness=(0.85, 1.15)),  # Sharpness                            0.05
-        iaa.WithColorspace(to_colorspace='HSV', from_colorspace='RGB',  # Random HSV increase                  0.09
-                           children=iaa.WithChannels(0, iaa.Add((-30, 30)))),
-        iaa.WithColorspace(to_colorspace='HSV', from_colorspace='RGB',
-                           children=iaa.WithChannels(1, iaa.Add((-30, 30)))),
-        iaa.WithColorspace(to_colorspace='HSV', from_colorspace='RGB',
-                           children=iaa.WithChannels(2, iaa.Add((-30, 30)))),
-        iaa.AddElementwise((-10, 10)),  # Per pixel addition                   0.11
+        iaa.Sharpen(alpha=(0.1, 0.75), lightness=(0.75, 1.1)),  # Sharpness 0.05
+        iaa.GammaContrast((0.5, 2.0)),
+        iaa.WithHueAndSaturation([iaa.WithChannels(0, iaa.Add((-15,15))), 
+                                  iaa.WithChannels(1, [iaa.Multiply((0.5, 1.5)), iaa.LinearContrast((0.75, 1.25))])]),
+        iaa.AddElementwise((-10, 10), per_channel=0.5),  # Per pixel addition                   0.11
         iaa.CoarseDropout((0.0, 0.02), size_percent=(0.02, 0.25)),  # Add large black squares              0.13
-        iaa.GaussianBlur(sigma=(0.1, 1.0)),  # GaussianBlur                         0.14
-        iaa.Grayscale(alpha=(0.1, 1.0)),  # Random Grayscale conversion          0.17
+        iaa.GaussianBlur(sigma=(0.1, 0.5)),  # GaussianBlur                         0.14
         iaa.Dropout(p=(0, 0.1), per_channel=0.2),  # Add small black squares              0.17
-        iaa.AdditiveGaussianNoise(scale=(0.0, 0.05 * 255), per_channel=0.5),
-        # Add Gaussian per pixel noise         0.26
-        iaa.ElasticTransformation(alpha=(0, 1.0), sigma=0.25),  # Distort image by rearranging pixels  0.70
+        iaa.AdditiveGaussianNoise(scale=(0.0, 0.05 * 255), per_channel=0.5),  # Add Gaussian per pixel noise         0.26
+#        iaa.ElasticTransformation(alpha=(0, 1.0), sigma=0.25),  # Distort image by rearranging pixels  0.70
         iaa.LinearContrast((0.75, 1.5)),  # Contrast Normalization               0.95
         iaa.weather.Clouds(),
-        iaa.weather.Fog(),
-  #      iaa.weather.Rain()
     ], random_order=True)
 
-nightnoise = iaa.Sequential([iaa.AdditiveGaussianNoise(scale=(0, 5))])
+nightnoise = iaa.Sequential([iaa.AdditiveGaussianNoise(scale=(0, 3))])
 #%%
 class TrainingDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, df, crops, X_col, y_col,
-                 batch_size, model_name,
-                 shuffle=True, INSERTS=False, SPP_BAL=False,
+                 batch_size, model_name, shuffle=True, 
+                 inclEmpties=True, INSERTS=False, SPP_BAL=False,
                  weights=None, night_weights=None):
 
         self.df = df.copy()
@@ -135,23 +126,29 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.model = model_name
+        self._inclEmpties = inclEmpties
         self.INSERTS=INSERTS
         self.n = len(self.df)
-        if self.INSERTS==False:
+        
+        if self._inclEmpties==True:
+            day_classes = [0, 1, 2, 3, 4, 5, 6, 7]
+            night_classes = [0, 1, 2, 3, 4, 6, 7]
+        else:
+            day_classes = [0, 1, 2, 3, 4, 5, 6]
+            night_classes = [0, 1, 2, 3, 5, 6]
+        if self._inclEmpties==False:
             self.n_id = df[y_col['id']].nunique()
         elif self.INSERTS==True:
             self._weights=weights
             self._night_weights=night_weights
+            self.n_id = 7
             if self.df['id'].isin([-2]).any():
-                self.n_id = ((df[y_col['id']].nunique())-2)
                 if SPP_BAL == False:
-                    self._weights=weights
-                    self._night_weights=night_weights
+                    self.NL_weights=weights
+                    self.NL_night_weights=night_weights
                 else:
-                    self._weights=None
-                    self._night_weights=None
-            else:
-                self.n_id = ((df[y_col['id']].nunique())-1)
+                    self.NL_weights=None
+                    self.NL_night_weights=None
             if self.n_id>12:
                 day_choices=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 25, 28, 29, 30, 31, 32, 33, 34, 35]
                 night_choices=[0, 1, 2, 4, 6, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33]
@@ -166,12 +163,13 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
     def __insert_augs(self, path, night, spp):
         if spp==-1:
             if night==False:
-                rolld8=(random.choices([0, 1, 2, 3, 4, 5, 6, 7], weights=self._weights, k=1))[0]
-                if rolld8==0:
-                    image = tf.keras.utils.load_img(path)
-                    image_arr = tf.keras.utils.img_to_array(image)
-                    species=0
-                    return image_arr, species
+                rolld8=(random.choices(day_classes, weights=self._weights, k=1))[0]
+                if self._inclEmpties==True:
+                    if rolld8==0:
+                        image = tf.keras.utils.load_img(path)
+                        image_arr = tf.keras.utils.img_to_array(image)
+                        species=0
+                        return image_arr, species
 
                 crop_index = self.crops.loc[(self.crops.Night==False) & (self.crops.id==rolld8)].sample(n=1).index.item()
                 cpath = self.crops.iloc[crop_index, 0]
@@ -179,21 +177,31 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
                 spp_name = self.crops.iloc[crop_index, 2]
                 species = self.crops.iloc[crop_index, 3]
                 
+                alpha = crop[:,:,3]
+                crop = cv2.cvtColor(crop, cv2.COLOR_BGRA2BGR)
+                reference = cv2.imread(path)
+                reference = reference[52:172, 0:224]
+
+                crop2 = match_histograms(crop, reference, channel_axis = -1)
+                crop = cv2.addWeighted(crop2, 0.25, crop, 0.75, 0.0)
+                crop = cv2.cvtColor(crop, cv2.COLOR_BGR2BGRA)
+                crop[:,:,3] = alpha
                 crop_aug = mask_augs.augment_image(crop)
                 y_jitter=random.randint(-7, 40)
                 x_jitter=random.randint(-85, 85)
                 image = cv2.imread(path)
                 image = add_transparent_image(image, crop_aug, x_offset=x_jitter, y_offset=y_jitter)
 
-          #      image_og = cv2.imread(path)
+                image_og = cv2.imread(path)
          #       image = match_histograms(image, image_og, channel_axis=-1)
             elif night==True:
-                nightd7=(random.choices([0, 1, 2, 3, 4, 6, 7], weights=self._night_weights, k=1))[0]
-                if nightd7==0:
-                    image = tf.keras.utils.load_img(path)
-                    image_arr = tf.keras.utils.img_to_array(image)
-                    species=0
-                    return image_arr, species
+                nightd7=(random.choices(night_classes, weights=self._night_weights, k=1))[0]
+                if self._inclEmpties==True:
+                    if nightd7==0:
+                        image = tf.keras.utils.load_img(path)
+                        image_arr = tf.keras.utils.img_to_array(image)
+                        species=0
+                        return image_arr, species
 
                 crop_index = self.crops.loc[(self.crops.Night==True) & (self.crops.id==nightd7)].sample(n=1).index.item()
                 cpath = self.crops.iloc[crop_index, 0]
@@ -206,13 +214,13 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
                 x_jitter=random.randint(-85, 85)
                 image = cv2.imread(path)
                 image = add_transparent_image(image, crop_aug, x_offset=x_jitter, y_offset=y_jitter)
-        #        image = nightnoise.augment_image(image)
+                image = nightnoise.augment_image(image)
 
             image = cv2.rectangle(image, (0,0), (244,52), (0,0,0), -1) # 52 pixels on top and bottom Black infobar)
             image = cv2.rectangle(image, (0,172), (244,244), (0,0,0), -1) # 52 pixels on top and bottom Black infobar)
-            
-            rolld100=random.randint(1, 101)
-            if rolld100==100: #Save 1% of created images for verification
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            rolld1000=random.randint(1, 1001)
+            if rolld1000==1000: #Save 1% of created images for verification
                 file = path.rsplit('/')[-1]
                 spp_name = self.crops.iloc[crop_index, 2]
                 if not os.path.exists("Results/augmentations/"):
@@ -224,34 +232,36 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
             return image_arr, species
         if spp==-2:
             if night==False:
-                rolld8=(random.choices([0, 1, 2, 3, 4, 5, 6, 7], weights=self._weights, k=1))[0]
-                if rolld8==0:
-                    image = tf.keras.utils.load_img(path)
-                    image_arr = tf.keras.utils.img_to_array(image)
-                    species=0
-                    return image_arr, species
+                rolld8=(random.choices(day_classes, weights=self.NL_weights, k=1))[0]
+                if self._inclEmpties==True:
+                    if rolld8==0:
+                        image = tf.keras.utils.load_img(path)
+                        image_arr = tf.keras.utils.img_to_array(image)
+                        species=0
+                        return image_arr, species
 
                 crop_index = self.crops.loc[(self.crops.Night==False) & (self.crops.id==rolld8)].sample(n=1).index.item()
                 cpath = self.crops.iloc[crop_index, 0]
                 crop = cv2.imread(('crops/' + cpath), cv2.IMREAD_UNCHANGED)
                 spp_name = self.crops.iloc[crop_index, 2]
                 species = self.crops.iloc[crop_index, 3]
-                
                 crop_aug = mask_augs.augment_image(crop)
                 y_jitter=random.randint(-7, 40)
                 x_jitter=random.randint(-85, 85)
                 image = cv2.imread(path)
                 image = add_transparent_image(image, crop_aug, x_offset=x_jitter, y_offset=y_jitter)
 
-          #      image_og = cv2.imread(path)
-         #       image = match_histograms(image, image_og, channel_axis=-1)
+                image_og = cv2.imread(path)
+                image = insert_aug.augment_image(image)
+                #image = match_histograms(image, image_og, channel_axis=-1)
             elif night==True:
-                nightd7=(random.choices([0, 1, 2, 3, 4, 6, 7], weights=self._night_weights, k=1))[0]
-                if nightd7==0:
-                    image = tf.keras.utils.load_img(path)
-                    image_arr = tf.keras.utils.img_to_array(image)
-                    species=0
-                    return image_arr, species
+                nightd7=(random.choices(night_classes, weights=self.NL_night_weights, k=1))[0]
+                if self._inclEmpties==True:
+                    if nightd7==0:
+                        image = tf.keras.utils.load_img(path)
+                        image_arr = tf.keras.utils.img_to_array(image)
+                        species=0
+                        return image_arr, species
 
                 crop_index = self.crops.loc[(self.crops.Night==True) & (self.crops.id==nightd7)].sample(n=1).index.item()
                 cpath = self.crops.iloc[crop_index, 0]
@@ -264,13 +274,15 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
                 x_jitter=random.randint(-85, 85)
                 image = cv2.imread(path)
                 image = add_transparent_image(image, crop_aug, x_offset=x_jitter, y_offset=y_jitter)
-        #        image = nightnoise.augment_image(image)
+                image = nightnoise.augment_image(image)
 
             image = cv2.rectangle(image, (0,0), (244,52), (0,0,0), -1) # 52 pixels on top and bottom Black infobar)
             image = cv2.rectangle(image, (0,172), (244,244), (0,0,0), -1) # 52 pixels on top and bottom Black infobar)
-            
-            rolld100=random.randint(1, 101)
-            if rolld100==100: #Save 1% of created images for verification
+
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            rolld1000=random.randint(1, 1001)
+            if rolld1000==1000: #Save 1% of created images for verification
                 file = path.rsplit('/')[-1]
                 spp_name = self.crops.iloc[crop_index, 2]
                 if not os.path.exists("Results/augmentations/"):
@@ -280,76 +292,6 @@ class TrainingDataGenerator(tf.keras.utils.Sequence):
             image_arr = image.astype("float32")
             species = self.crops.iloc[crop_index, 3]
             return image_arr, species
-    #Reads image and normalizes it
-    def __get_input(self, path):
-        image = tf.keras.utils.load_img(path)
-        image_arr = tf.keras.utils.img_to_array(image)
-        image_arr = small_aug.augment_image(image_arr.astype("uint8")).astype("float32")
-        return image_arr/255
-
-    #Reads image and normalizes it
-    def __get_insert_input(self, x):
-        path=x[0]
-        night=x[1]
-        spp=x[2]
-
-        if spp in (-1, -2):
-            image_arr, x[2] = self.__insert_augs(path, night, spp)
-        else:
-            image = tf.keras.utils.load_img(path)
-            image_arr = tf.keras.utils.img_to_array(image)
-        image_arr = small_aug.augment_image(image_arr.astype("uint8")).astype("float32")
-        spp = x[2]
-        label = tf.keras.utils.to_categorical(spp, self.n_id)
-        return image_arr/255, label
-
-    #One-hot encoding of label
-    def __get_output(self, label, num_classes):
-        return tf.keras.utils.to_categorical(label, num_classes=num_classes)
-
-    #Generates batch_size samples of data
-    def __get_data(self, batches):
-        # Generates data containing batch_size samples
-        path_batch = batches[self.X_col['path']]
-        name_batch = batches[self.y_col['id']]
-
-        if self.INSERTS==True:
-            night_batch = batches[self.X_col['Night']]
-            x_batches=np.array([path_batch, night_batch, name_batch])
-            x_batches=np.stack(x_batches,axis=1)
-
-            batch_tuple = np.asarray([self.__get_insert_input(x) for x in x_batches])
-            X_batch, y0_batch = zip(*batch_tuple)
-            X_batch = np.array(X_batch)
-            y0_batch= np.array(y0_batch)
-
-        else:
-            X_batch = np.asarray([self.__get_input(x) for x in path_batch])
-            y0_batch = np.asarray([self.__get_output(y, self.n_id) for y in name_batch])
-
-        if self.model in ('DenseNet201', 'CNN'):
-            return X_batch, y0_batch
-        elif self.model in ('DANNseNet201', 'DANN'):
-            sin_season_batch = batches[self.y_col['sin_date']]
-            cos_season_batch = batches[self.y_col['cos_date']]
-            y1_batch = np.asarray([y for y in zip(sin_season_batch, cos_season_batch)])
-            return X_batch, tuple([y0_batch, y1_batch])
-        elif self.model in ('CatDANN', 'catDANN'):
-            domain_batch = batches[self.y_col['domain']]
-            y1_batch = np.asarray([self.__get_output(y, 4) for y in domain_batch])
-            return X_batch, tuple([y0_batch, y1_batch])
-
-    #Returns data batches as tuple
-    def __getitem__(self, index):
-
-        batches = self.df[index * self.batch_size:(index + 1) * self.batch_size]
-        X, y = self.__get_data(batches)    
-
-        return X, y
-
-    #Returns number of batches
-    def __len__(self):
-        return self.n // self.batch_size
 #%%
 
 class ValidationDataGenerator(tf.keras.utils.Sequence):
@@ -416,7 +358,6 @@ class ValidationDataGenerator(tf.keras.utils.Sequence):
 
 
 #%%
-
 class TestingDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, df, X_col, y_col,
                  batch_size, model_name,
@@ -474,90 +415,3 @@ class TestingDataGenerator(tf.keras.utils.Sequence):
     
     def __len__(self):
         return self.n // self.batch_size
-
-#%% Command-line driver
-
-'''
-The DictAction argparse.Action class definition is a mix of codes by 
-GitHub users: vadimkantorov and ozcanyarimdunya, with the structure following the latter.
-Source: https://gist.github.com/vadimkantorov/37518ff88808af840884355c845049ea 
-
-The strbool argparse type definition is derived from StackOverflow user maxim. 
-Source: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse/43357954#43357954
-'''
-
-class DictAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, dict())
-        for each in values:
-            try:
-                key, value = each.split("=")
-                getattr(namespace, self.dest)[key] = value
-            except ValueError as ex:
-                message = "\nTraceback: {}".format(ex)
-                message += "\nError on '{}' || It should be 'key=value'".format(each)
-                raise argparse.ArgumentError(self, str(message))
-
-def strbool(string):
-    if isinstance(string, bool):
-        return string
-    if string.lower() in ('true', 't', 'yes', 'y'):
-        return True
-    elif string.lower() in ('false', 'f', 'no', 'n'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected. Enter either "True" or "False"')
-
-def main():
-    
-    parser = argparse.ArgumentParser(
-        description='This program generates batches of data for training and testing the ML model.')
-    parser.add_argument('df', 
-                        type=str,
-                        help='Path to df containing list of images with metadata.')
-    parser.add_argument('directory', 
-                        type=str,
-                        help='Path to the root directory of images above the paths listed in df.')
-    Required = parser.add_argument_group('Required arguments')
-    Optional = parser.add_argument_group('Optional arguments')
-    Required.add_argument('--X_col', '-X', '-x',
-                        dest='X_col',
-                        action=DictAction,
-                        metavar="AIfeat=dfcol",
-                        default={},
-                        required=True,
-                        help='Enter key=value pairs to encode model feature to df column variable. ' + \
-                            'Will accept -X key1=value1 "key2=value 2". ' + \
-                                'Expected keys: path=__')
-    Required.add_argument('--y_col', '-y', '-Y',
-                        dest='y_col',
-                        action=DictAction,
-                        metavar="AIfeat=dfcol",
-                        default={},
-                        required=True,
-                        help='Enter key=value pairs to encode model feature to df column variable. ' + \
-                            'Will accept -y key1=value1 "key2=value 2". ' + \
-                                'Expected keys: id=__, domain=__, sin_date=__, cos_date=__')
-    Optional.add_argument('--batch_size', '--batch',
-                        type=int, 
-                        default=50,
-                        help='Integer; number of images in batch for training. Default is 50. ')
-    Optional.add_argument('--shuffle', '--s',
-                        type=strbool,
-                        default=True,
-                        help='Str, enter "True" or "t" or "False" or "f". ' +\
-                            'Argument can be either upper or lower case. ' +\
-                            'Default is True.')
-
-    if len(sys.argv[1:]) == 0:
-        parser.print_help()
-        parser.exit()
-    
-    args = parser.parse_args()
-    
-    assert os.path.exists(args.df), \
-        'df {} does not exist'.format(args.df)
-    
-
-if __name__ == '__main__':
-    main()
