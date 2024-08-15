@@ -20,7 +20,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import StratifiedGroupKFold
-import ImageDataGenerators as idg
+import InsertAug_IDG as idg
 from keras_tuner.engine.tuner import Tuner, maybe_distribute
 
 from keras_tuner import utils
