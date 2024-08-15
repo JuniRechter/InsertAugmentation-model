@@ -20,7 +20,7 @@ Command-line arguments:
     - save: str, enter filename for the created CSV file.
 
 Example:
-    python Time_of_Day.py AHC masks AHC_masks_ToD
+    python Time_of_Day.py AHC AHC_masks_ToD --crops
 """
 
 import os
@@ -30,7 +30,9 @@ import cv2
 import argparse
 import time
 import humanfriendly
-
+#%%
+CT_EXT = ['jpg', '.jpeg']
+MASK_EXT = ['.png']
 #%%
 def check_ToD(image_directory="image_directory", crops=False): 
 
@@ -41,7 +43,7 @@ def check_ToD(image_directory="image_directory", crops=False):
     
     Inputs:
     - image_directory: str, set the directory to pull images from. 
-    - crops: bool, if True, function will check PNG files instead, and load four channels (RGBA).
+    - crops: bool, if True, function will check animal cutout (crops/masks) PNG files instead, and load four channels (RGBA).
     
     """
     data=[]
@@ -50,7 +52,7 @@ def check_ToD(image_directory="image_directory", crops=False):
         for directory, subdirs, files in os.walk(image_directory):
             rel_subdir = os.path.relpath(directory, start=image_directory)
             for f in files:
-                if f.endswith('.JPG' or '.jpg' or'.JPEG' or '.jpeg'):
+                if f.lower().endswith(tuple(CT_EXT)):
                     image = cv2.imread(directory + "/" + f)
                     img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
                     saturation = img_hsv[:, :, 1].mean()
@@ -64,7 +66,7 @@ def check_ToD(image_directory="image_directory", crops=False):
         for directory, subdirs, files in os.walk(image_directory):
             rel_subdir = os.path.relpath(directory, start=image_directory)
             for f in files:
-                if f.endswith('.png' or '.PNG'):
+                if f.lower().endswith(tuple(MASK_EXT)):
                     image = cv2.imread(directory + "/" + f, cv2.IMREAD_UNCHANGED)
                     img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
                     saturation = img_hsv[:, :, 1].mean()
@@ -86,13 +88,13 @@ def main():
     parser.add_argument('image_directory', 
                         type=str,
                         help='Path to directory of images.')
-    parser.add_argument('crops', 
-                        action='store_true',
-                        help='Include argument if checking ToD of cropped animals.')
     parser.add_argument('save', 
                         type=str,
                         help='Enter filename for the created CSV file.')
-
+    parser.add_argument('--crops', 
+                        action='store_true',
+                        help='Include argument if checking ToD of cropped animals.')
+    
     if len(sys.argv[1:]) == 0:
         parser.print_help()
         parser.exit()
