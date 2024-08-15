@@ -54,7 +54,7 @@ import tensorflow as tf
 from PIL import ImageOps
 import keras
 from tensorflow.keras.optimizers import Adam
-import training.ImageDataGenerators as idg
+import training.InsertAug_IDG as idg
 import argparse
 import time
 import humanfriendly
