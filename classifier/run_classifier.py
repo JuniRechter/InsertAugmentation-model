@@ -4,6 +4,11 @@ Created on Mon Jun 3 10:38:14 2024
 
 @author: Juniper Rechter
 
+This file contains functions for running the trained AHC species classifier model, 
+with options to request more or less data in the output. 
+Currently, this program uses CSV files (either provided or generated from a directory)
+to set the list of images to be tested. 
+
 Command-line arguments:
     Required
     - classifier_file: str, path to classifier model file (ending in ".keras"). 
@@ -14,6 +19,7 @@ Command-line arguments:
     - output_file: str, path to output CSV results file, should end with a .csv extension.
 
     Optional
+    --recursive: include argument to search recursively through the provided directory and all subdirectories.
     --column: str, name of the column/variable containing file paths. Can use if providing a CSV.
                        Pathing within CSV must be relative to directory the program is run from.
                        Default is "full_path".
@@ -45,13 +51,14 @@ import pandas as pd
 import json
 import tensorflow as tf
 from PIL import ImageOps
+import keras
 from tensorflow.keras.optimizers import Adam
 import training.ImageDataGenerators as idg
 import argparse
 import time
 import humanfriendly
 
-#%%
+#%% #Set constant variables for function use.
 
 image_extensions = ['.jpg', '.jpeg', '.gif', '.png']
 
@@ -92,7 +99,7 @@ def generate_file_df(image_directory, recursive=False):
     return df
 
 #%%
-def generate_results_df(df, y_pred, output_file, threshold=None, full_results=False, max_conf=False):
+def generate_results_df(df, y_pred, output_file, max_conf=False, top_5=False, threshold=None, full_results=False):
     '''
     This function takes a provided DataFrame (either from user-given CSV file or a generated one) and adds 
     model predictions and corresponding classes. It will provide the top prediction in one column, and the 
@@ -100,9 +107,11 @@ def generate_results_df(df, y_pred, output_file, threshold=None, full_results=Fa
     predictions (14 species and 1 unknown class) and confidence scores can be given if requested. 
   
     Inputs:
-    - df:
-    - y_pred: array, the full array of results output by model prediction
-    - output_file: str, path to output CSV results file, should end with a .csv extension.
+    - df: takes the CSV file generated or provided that contains a list of all images to be tested.
+    - y_pred: array, the full array of results output by model prediction.
+    - output_file: str, path to output and save CSV results file, should end with a .csv extension.
+    - max_conf: bool, would you like the model to output the confidence score for the highest scoring prediction?
+    - top_5: bool, would you like the model to output the top five predictions (and confidence scores) per image?
     - threshold: float, confidence threshold between 0.0 and 1.0; only provide predictions above this threshold, 
                  else an image prediction will return as "unknown" to flag user for verification. 
                  Default is None (disabled).
@@ -122,30 +131,30 @@ def generate_results_df(df, y_pred, output_file, threshold=None, full_results=Fa
     full_prediction = []
     top5_preds = []
     top1_conf = []
-    length = y_pred.shape[0]
-    for i in range(0, length):
+    for i in df.index:
+        species_pred=df['SpeciesPred'][i]
         image_preds = (y_pred[i])
         sorted_preds = sorted(image_preds, reverse=True)
-        sorted_percents = sorted(zip(([f'{pred*100:.2f}%' for pred in image_preds]), DEFAULT_15SPP_CLASSES), reverse=True)
-        top_conf = sorted([f'{pred*100:.2f}%' for pred in image_preds], reverse=True)[0]
-
+        sorted_percents = sorted(zip([f'{pred*100:.2f}%' for pred in image_preds], DEFAULT_15SPP_CLASSES), reverse=True)
+        top_conf = (f'{max(image_preds)*100:.2f}%')
         top5=sorted_percents[:5]
         if threshold is not None:
             if sorted_preds[0] < threshold:
-                df['SpeciesPred'][i]="unknown"
+                df['SpeciesPred'][i]="unknown - {}".format(species_pred)
         top1_conf.append(top_conf)
         top5_preds.append(top5)
         full_prediction.append(sorted_percents)
     
     if max_conf==True:
         df['Pred_Confidence']=top1_conf
-    df['Top5_Predictions'] = top5_preds
+    if top_5==True:
+        df['Top5_Predictions'] = top5_preds
     if full_results==True:
         df['Full_Prediction_Scores']=full_prediction
 
     df.drop(columns=['ClassPred', 'dummy_id'], inplace=True)
     
-    results_df.to_csv(output_file, index=False)
+    df.to_csv(output_file, index=False)
     print('Results saved to {}'.format(output_file))
 
 #%% Command-line driver
@@ -179,21 +188,22 @@ def main():
                         type=str,
                         help="Path to output CSV results file, should end with a .csv extension.")
     Optional = parser.add_argument_group('Optional arguments')
+    Optional.add_argument('--recursive',
+                          action='store_true',
+                          help='Include argument to search recursively through the provided directory and all subdirectories.')
     Optional.add_argument('--column',
                           type=str,
                           default=None,
                           help='str, name of the file path column/variable if providing a CSV. ' +\
                                'Image pathing within CSV must be relative to directory program is run from.' +\
-                               'Default is "full_path"')
+                               'Default is "full_path')
     Optional.add_argument('--include_max_conf',
                           action='store_true',
-                          help='Include the confidence score of the highest scoring prediction.')
+                          help='Include argument to request the confidence score of the highest scoring prediction.')
     Optional.add_argument('--top5',
                           type=strbool,
-                          default=True,
-                          help='str, Would you like the model to output the top 5 predictions per image? ' +\
-                               'Enter "True" or "t" or "False" or "f"; Argument can be either upper or lower case. ' +\
-                               'Default is True.')
+                          action='store_true',
+                          help='Include argument to request the top 5 predictions (and their corresponding confidence scores) per image.')
     Optional.add_argument('--threshold',
                           type=float,
                           default=None,
@@ -221,15 +231,15 @@ def main():
         'Confidence threshold needs to be between 0.0 and 1.0.'
     
     if os.path.isdir(args.image_paths):
-        test_df = generate_file_df(args.image_paths)
+        test_df = generate_file_df(args.image_paths, recursive=args.recursive)
         if len(test_df) >0:
             print('{} images found in the input directory.'.format(len(test_df)))
             column = "full_path"
         else:
             print('No images found in the directory {}. Exiting.'.format(args.image_paths))
-        assert os.path.exists(args.image_paths), \
-        'df {} does not exist'.format(args.image_paths)
     elif os.path.isfile(args.image_paths):
+        assert os.path.exists(args.image_paths), \
+            'df {} does not exist'.format(args.image_paths)
         test_df = pd.read_csv(args.image_paths)
         print('Loaded {} image filenames from CSV file {}.'.format(len(test_df), args.image_paths))
         if args.column is not None:
@@ -237,6 +247,9 @@ def main():
                 'Column {} does not exist within CSV file {}.'.format(args.column, args.image_paths)
             column = args.column
         else:
+            assert "full_path" in test_df.columns, \
+                'Column "full_path" does not exist within CSV file {}. '.format(args.image_paths) +\
+                    '\nPlease specify which column contains the list of file paths.'
             column = "full_path"
     else:
         raise ValueError('image_file specified is not a CSV dataframe, or a directory.')
@@ -274,10 +287,11 @@ def main():
     
     generate_results_df(test_df, 
                         results, 
-                        args.output_file,
-                        args.threshold, 
-                        full_results=args.full_results, 
-                        max_conf=args.max_conf)
+                        output_file=args.output_file,
+                        max_conf=args.max_conf,
+                        top_5=args.top5,
+                        threshold=args.threshold, 
+                        full_results=args.full_results)
     
     print("Finished! \nThank you and have a nice day!")
     
