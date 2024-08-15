@@ -40,8 +40,9 @@ Command-line arguments:
                        within the output CSV file.
 
 
-Example:
-    python Time_of_Day.py AHC masks AHC_masks_ToD
+Examples:
+    python run_classifier.py path/to/AHC_SPP15_ID_mdl_wts.keras path/to/images results_file.csv --threshold 0.7
+    python run_classifier.py path/to/AHC_SPP15_ID_mdl_wts.keras path/to/dataframe.csv results_file.csv --paths filenames
 """
 
 import os
