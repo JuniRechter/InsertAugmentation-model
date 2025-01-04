@@ -1,0 +1,31 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Insert Augmentation models
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Juni
+    family-names: Rechter
+    email: juniper.rechter@proton.me
+    affiliation: University of Guelph
+    orcid: 'https://orcid.org/0009-0003-1960-4314'
+repository-code: 'https://github.com/JuniRechter/InsertAugmentation-model'
+abstract: >-
+  Scripts associated with the thesis: "Improving the domain
+  adaptation of camera trap image classifiers using inserted
+  animal cutouts", for the University of Guelph. 
+
+
+  Scripts include extracting animal cutouts from images,
+  preparing data for training, model training using
+  DenseNet201 with insert (copy-paste) augmentation, and
+  running the final model.
+keywords:
+  - copy-paste
+  - domain adaptation
+  - computer vision
+license: GPL-3.0
